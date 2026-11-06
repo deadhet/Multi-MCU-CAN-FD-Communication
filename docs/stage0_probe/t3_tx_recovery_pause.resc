@@ -1,0 +1,52 @@
+emulation CreateCANHub "canHub"
+mach create "mcu1"
+machine LoadPlatformDescription @platforms/cpus/stm32h743.repl
+sysbus.usart1 CreateFileBackend $ORIGIN/out/k1.log true
+connector Connect sysbus.fdcan1 canHub
+sysbus LoadELF $ORIGIN/build/probe1.elf
+mach create "mcu2"
+machine LoadPlatformDescription @platforms/cpus/stm32h743.repl
+sysbus.usart1 CreateFileBackend $ORIGIN/out/k2.log true
+connector Connect sysbus.fdcan1 canHub
+sysbus LoadELF $ORIGIN/build/probe2.elf
+mach create "mcu3"
+machine LoadPlatformDescription @platforms/cpus/stm32h743.repl
+sysbus.usart1 CreateFileBackend $ORIGIN/out/k3.log true
+connector Connect sysbus.fdcan1 canHub
+sysbus LoadELF $ORIGIN/build/probe3.elf
+emulation SetGlobalQuantum "0.0001"
+emulation RunFor "0.2"
+mach set "mcu3"
+connector Disconnect sysbus.fdcan1 canHub
+emulation RunFor "0.1"
+connector Connect sysbus.fdcan1 canHub
+emulation RunFor "0.05"
+echo "### before kick TXBRP/TXFQS"
+sysbus ReadDoubleWord 0x4000A0CC
+sysbus ReadDoubleWord 0x4000A0C4
+echo "### TXBAR rewrite of pending bits"
+sysbus WriteDoubleWord 0x4000A0D0 0xF
+emulation RunFor "0.05"
+sysbus ReadDoubleWord 0x4000A0CC
+sysbus ReadDoubleWord 0x4000A0C4
+emulation RunFor "0.1"
+echo "### second disconnect, then TXBCR cancel path"
+connector Disconnect sysbus.fdcan1 canHub
+emulation RunFor "0.1"
+connector Connect sysbus.fdcan1 canHub
+sysbus ReadDoubleWord 0x4000A0CC
+sysbus WriteDoubleWord 0x4000A0D4 0xF
+emulation RunFor "0.05"
+echo "### after TXBCR: TXBRP/TXFQS/TXBCF"
+sysbus ReadDoubleWord 0x4000A0CC
+sysbus ReadDoubleWord 0x4000A0C4
+sysbus ReadDoubleWord 0x4000A0DC
+emulation RunFor "0.1"
+echo "### pause one machine"
+mach set "mcu2"
+machine Pause
+emulation RunFor "0.2"
+sysbus.cpu PC
+machine Start
+emulation RunFor "0.2"
+quit

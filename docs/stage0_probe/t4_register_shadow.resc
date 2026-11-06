@@ -1,0 +1,23 @@
+mach create "mcu1"
+machine LoadPlatformDescription @platforms/cpus/stm32h743.repl
+sysbus SetHookBeforePeripheralWrite sysbus.fdcan1 "import sys; d=sys.__dict__.setdefault('fdcan_shadow',{}); d[(str(self.GetMachine().GetHashCode()),offset)]=value if offset in (0x0C,0x1C,0x48) else d.get((str(self.GetMachine().GetHashCode()),offset),None)"
+sysbus SetHookAfterPeripheralRead sysbus.fdcan1 "import sys; d=sys.__dict__.setdefault('fdcan_shadow',{}); k=(str(self.GetMachine().GetHashCode()),offset); value = d[k] if (offset in (0x0C,0x1C,0x48) and d.get(k) is not None) else value"
+sysbus.usart1 CreateFileBackend $ORIGIN/out/s1.log true
+sysbus LoadELF $ORIGIN/build/probe1.elf
+mach create "mcu2"
+machine LoadPlatformDescription @platforms/cpus/stm32h743.repl
+sysbus SetHookBeforePeripheralWrite sysbus.fdcan1 "import sys; d=sys.__dict__.setdefault('fdcan_shadow',{}); d[(str(self.GetMachine().GetHashCode()),offset)]=value if offset in (0x0C,0x1C,0x48) else d.get((str(self.GetMachine().GetHashCode()),offset),None)"
+sysbus SetHookAfterPeripheralRead sysbus.fdcan1 "import sys; d=sys.__dict__.setdefault('fdcan_shadow',{}); k=(str(self.GetMachine().GetHashCode()),offset); value = d[k] if (offset in (0x0C,0x1C,0x48) and d.get(k) is not None) else value"
+sysbus.usart1 CreateFileBackend $ORIGIN/out/s2.log true
+sysbus LoadELF $ORIGIN/build/probe2.elf
+emulation RunFor "0.02"
+mach set "mcu2"
+sysbus WriteDoubleWord 0x4000A01C 0x12345678
+echo "### mcu2 NBTP after monitor write (expect 12345678)"
+sysbus ReadDoubleWord 0x4000A01C
+mach set "mcu1"
+echo "### mcu1 NBTP (expect 1E013E0F)"
+sysbus ReadDoubleWord 0x4000A01C
+echo "### mcu1 CCCR untouched (expect 300)"
+sysbus ReadDoubleWord 0x4000A018
+quit
