@@ -19,14 +19,14 @@ set(COMMON_SOURCES
   ${FW}/startup/startup_stm32h743.c
   ${FW}/common/drivers/board.c
   ${FW}/common/drivers/clock.c
+  ${FW}/common/drivers/fdcan.c
   ${FW}/common/drivers/systick.c
   ${FW}/common/drivers/uart.c
   ${FW}/common/sched/scheduler.c
 )
 
-# Builds nodeN.elf from one source tree.
-function(add_node id app_source)
-  set(target node${id})
+# Builds one image from the shared source tree.
+function(add_image target id app_source)
   add_executable(${target} ${COMMON_SOURCES} ${app_source} ${ARGN})
   set_target_properties(${target} PROPERTIES SUFFIX .elf LINK_DEPENDS ${LINKER_SCRIPT})
   target_compile_definitions(${target} PRIVATE STM32H743xx NODE_ID=${id})
@@ -46,7 +46,10 @@ function(add_node id app_source)
     COMMAND ${ARM_SIZE} $<TARGET_FILE:${target}>)
 endfunction()
 
-add_node(1 ${FW}/nodes/master/app_master.c ${FW}/common/monitor/monitor.c)
-add_node(2 ${FW}/nodes/slave/app_slave.c)
-add_node(3 ${FW}/nodes/slave/app_slave.c)
-add_node(4 ${FW}/nodes/slave/app_slave.c)
+add_image(node1 1 ${FW}/nodes/master/app_master.c ${FW}/common/monitor/monitor.c)
+add_image(node2 2 ${FW}/nodes/slave/app_slave.c)
+add_image(node3 3 ${FW}/nodes/slave/app_slave.c)
+add_image(node4 4 ${FW}/nodes/slave/app_slave.c)
+
+# Self test, not a product image.
+add_image(node_loopback 1 ${FW}/tests/app_loopback.c)
