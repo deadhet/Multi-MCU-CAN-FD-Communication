@@ -1,4 +1,5 @@
 log.md
 error.md
 build/
-logs/
+logs/*
+!logs/.gitkeep

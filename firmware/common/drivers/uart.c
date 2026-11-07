@@ -16,7 +16,9 @@ static volatile uint32_t tx_dropped;
 void uart_debug_init(void)
 {
     USART1->BRR = (CLOCK_PCLK_HZ + (DEBUG_BAUD / 2U)) / DEBUG_BAUD;
-    USART1->CR1 = USART_CR1_TE | USART_CR1_UE;
+    /* RM0433 p.2025: enable the USART first, then the transmitter. */
+    USART1->CR1 = USART_CR1_UE;
+    USART1->CR1 |= USART_CR1_TE;
 
     NVIC_SetPriority(USART1_IRQn, UART_PRIORITY);
     NVIC_EnableIRQ(USART1_IRQn);
@@ -45,6 +47,21 @@ void uart_debug_write(const char *text)
     tx_head = head;
 
     USART1->CR1 |= USART_CR1_TXEIE;
+}
+
+void uart_debug_write_u32(uint32_t value)
+{
+    char text[11]; /* 10 digits for 2^32 - 1, plus the terminator */
+    uint32_t pos = sizeof(text) - 1U;
+
+    text[pos] = '\0';
+    do {
+        pos--;
+        text[pos] = (char)('0' + (value % 10U));
+        value /= 10U;
+    } while (value != 0U);
+
+    uart_debug_write(&text[pos]);
 }
 
 uint32_t uart_debug_dropped(void)

@@ -1,0 +1,2 @@
+// One STM32H743 node. Thin wrapper over the stock platform, with no changes so far.
+using "platforms/cpus/stm32h743.repl"

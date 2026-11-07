@@ -1,0 +1,55 @@
+# Four STM32H743 nodes on one CAN hub. Include this, then run with "emulation RunFor".
+# logs/ must exist. Renode keeps an older log as mcuN.log.1 and so on.
+
+emulation CreateCANHub "canHub"
+
+mach create "mcu1"
+$node1=$ORIGIN/../build/node1.elf
+machine LoadPlatformDescription $ORIGIN/node.repl
+sysbus.usart1 CreateFileBackend $ORIGIN/../logs/mcu1.log true
+connector Connect sysbus.fdcan1 canHub
+macro reset
+"""
+    sysbus LoadELF $node1
+"""
+runMacro $reset
+
+mach create "mcu2"
+$node2=$ORIGIN/../build/node2.elf
+machine LoadPlatformDescription $ORIGIN/node.repl
+sysbus.usart1 CreateFileBackend $ORIGIN/../logs/mcu2.log true
+connector Connect sysbus.fdcan1 canHub
+macro reset
+"""
+    sysbus LoadELF $node2
+"""
+runMacro $reset
+
+mach create "mcu3"
+$node3=$ORIGIN/../build/node3.elf
+machine LoadPlatformDescription $ORIGIN/node.repl
+sysbus.usart1 CreateFileBackend $ORIGIN/../logs/mcu3.log true
+connector Connect sysbus.fdcan1 canHub
+macro reset
+"""
+    sysbus LoadELF $node3
+"""
+runMacro $reset
+
+mach create "mcu4"
+$node4=$ORIGIN/../build/node4.elf
+machine LoadPlatformDescription $ORIGIN/node.repl
+sysbus.usart1 CreateFileBackend $ORIGIN/../logs/mcu4.log true
+connector Connect sysbus.fdcan1 canHub
+macro reset
+"""
+    sysbus LoadELF $node4
+"""
+runMacro $reset
+
+# UART link: master USART3 to TCP port 3456.
+mach set "mcu1"
+emulation CreateServerSocketTerminal 3456 "uartTerm" false
+connector Connect sysbus.usart3 uartTerm
+
+emulation SetGlobalQuantum "0.0001"

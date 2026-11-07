@@ -21,6 +21,7 @@ set(COMMON_SOURCES
   ${FW}/common/drivers/clock.c
   ${FW}/common/drivers/systick.c
   ${FW}/common/drivers/uart.c
+  ${FW}/common/sched/scheduler.c
 )
 
 # Builds nodeN.elf from one source tree.
