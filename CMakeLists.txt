@@ -17,6 +17,10 @@ set(LINKER_SCRIPT ${FW}/linker/stm32h743vit6.ld)
 # Sources every node links. Later stages add drivers, comm, params and diag here.
 set(COMMON_SOURCES
   ${FW}/startup/startup_stm32h743.c
+  ${FW}/common/drivers/board.c
+  ${FW}/common/drivers/clock.c
+  ${FW}/common/drivers/systick.c
+  ${FW}/common/drivers/uart.c
 )
 
 # Builds nodeN.elf from one source tree.

@@ -1,0 +1,67 @@
+#include "stm32h743xx.h"
+#include "drivers/clock.h"
+#include "drivers/uart.h"
+
+#define DEBUG_BAUD 115200U
+#define UART_PRIORITY 3U
+
+#define TX_RING_SIZE 2048U /* Must be a power of two */
+#define TX_RING_MASK (TX_RING_SIZE - 1U)
+
+static uint8_t tx_ring[TX_RING_SIZE];
+static volatile uint32_t tx_head; /* Written only by uart_debug_write() */
+static volatile uint32_t tx_tail; /* Written only by USART1_IRQHandler() */
+static volatile uint32_t tx_dropped;
+
+void uart_debug_init(void)
+{
+    USART1->BRR = (CLOCK_PCLK_HZ + (DEBUG_BAUD / 2U)) / DEBUG_BAUD;
+    USART1->CR1 = USART_CR1_TE | USART_CR1_UE;
+
+    NVIC_SetPriority(USART1_IRQn, UART_PRIORITY);
+    NVIC_EnableIRQ(USART1_IRQn);
+}
+
+void uart_debug_write(const char *text)
+{
+    uint32_t len = 0U;
+    while (text[len] != '\0') {
+        len++;
+    }
+
+    uint32_t head = tx_head;
+    uint32_t free_bytes = (tx_tail - head - 1U) & TX_RING_MASK;
+    if (len > free_bytes) {
+        tx_dropped++;
+        return;
+    }
+
+    for (uint32_t i = 0U; i < len; i++) {
+        tx_ring[head] = (uint8_t)text[i];
+        head = (head + 1U) & TX_RING_MASK;
+    }
+
+    __DMB(); /* Data must be in the ring before the ISR can see the new head. */
+    tx_head = head;
+
+    USART1->CR1 |= USART_CR1_TXEIE;
+}
+
+uint32_t uart_debug_dropped(void)
+{
+    return tx_dropped;
+}
+
+void USART1_IRQHandler(void)
+{
+    uint32_t tail = tx_tail;
+
+    if (tail == tx_head) {
+        USART1->CR1 &= ~USART_CR1_TXEIE;
+        return;
+    }
+
+    uint8_t byte = tx_ring[tail];
+    tx_tail = (tail + 1U) & TX_RING_MASK;
+    USART1->TDR = byte;
+}

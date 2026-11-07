@@ -8,6 +8,7 @@
 #define CORE_VECTORS 16
 #define VECTOR_COUNT (CORE_VECTORS + WAKEUP_PIN_IRQn + 1)
 #define IRQ_SLOT(irq) (CORE_VECTORS + (irq))
+#define SUPPLY_WAIT_TRIES 1000000U
 
 #ifndef NODE_ID
 #error "NODE_ID must be passed by the build"
@@ -20,6 +21,8 @@ extern uint32_t _estack, _sidata, _sdata, _edata, _sbss, _ebss;
 extern int main(void);
 
 void Reset_Handler(void);
+void power_supply_init(void);
+void system_start(void);
 
 /* Stops here on any interrupt without a handler, so the fault is visible in a debugger. */
 void Default_Handler(void)
@@ -70,7 +73,29 @@ __attribute__((section(".isr_vector"), used)) static const vector_t vector_table
 };
 #pragma GCC diagnostic pop
 
-void Reset_Handler(void)
+/* RM0433 6.4.1: set the supply configuration and wait for valid voltage before any RAM
+ * write. This must stay a leaf function so the compiler never uses the stack here. */
+__attribute__((used)) void power_supply_init(void)
+{
+    PWR->CR3 = (PWR->CR3 & ~(PWR_CR3_SCUEN | PWR_CR3_LDOEN | PWR_CR3_BYPASS)) | PWR_CR3_LDOEN;
+
+    for (uint32_t tries = 0U; (PWR->CSR1 & PWR_CSR1_ACTVOSRDY) == 0U; tries++) {
+        if (tries == SUPPLY_WAIT_TRIES) {
+            for (;;) {
+            }
+        }
+    }
+}
+
+/* Naked, because a normal C function may push to the stack on entry, and the stack is RAM. */
+__attribute__((naked)) void Reset_Handler(void)
+{
+    __asm volatile(
+        "bl power_supply_init\n"
+        "b system_start\n");
+}
+
+__attribute__((used)) void system_start(void)
 {
     /* The FPU must be on before any compiled code can use it. */
     SCB->CPACR |= (0xFUL << 20);

@@ -1,0 +1,15 @@
+# Stage 2 step 2 check: runs exactly 1 second of virtual time and prints the ms counter.
+#   renode --disable-gui --console -e "include @renode/stage2_systick_check.resc" </dev/null
+mach create "m"
+machine LoadPlatformDescription @platforms/cpus/stm32h743.repl
+sysbus LoadELF $ORIGIN/../build/node1.elf
+emulation RunFor "1"
+echo "### ms counter after 1 s. Goal about 1000 = 0x3E8"
+sysbus ReadDoubleWord `sysbus GetSymbolAddress "ms_counter"`
+echo "### SYST_RVR (LOAD). Goal 0x000752FF = 479999"
+sysbus ReadDoubleWord 0xE000E014
+echo "### SYST_CSR (CTRL). Goal bits 0-2 set: 0x00000007 or 0x00010007"
+sysbus ReadDoubleWord 0xE000E010
+echo "### PC. Must be main, not Default_Handler"
+sysbus.cpu PC
+quit
