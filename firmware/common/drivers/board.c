@@ -14,13 +14,18 @@
 static void usart1_pins_init(void)
 {
     RCC->AHB4ENR |= RCC_AHB4ENR_GPIOAEN;
+    //bit 4 is USART1EN to turn on clock peripherals for USART1
     RCC->APB2ENR |= RCC_APB2ENR_USART1EN;
+
+    // following lines are here to make sure the write to this register is being done
     (void)RCC->AHB4ENR;
     (void)RCC->APB2ENR;
     (void)GPIOA->MODER;
     (void)USART1->CR1;
 
+    // GPIOA->AFR[1] = (GPIOA->AFR[1] & ~0x000000F0UL) | (0x7UL << 4);
     GPIOA->AFR[1] = (GPIOA->AFR[1] & ~GPIO_AFRH_AFSEL9) | (USART1_TX_AF << GPIO_AFRH_AFSEL9_Pos);
+    // GPIOA->MODER  = (GPIOA->MODER  & ~0x000C0000UL) | (0x2UL << 18);
     GPIOA->MODER = (GPIOA->MODER & ~GPIO_MODER_MODE9) | (PIN_MODE_AF << GPIO_MODER_MODE9_Pos);
 }
 

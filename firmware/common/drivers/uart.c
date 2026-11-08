@@ -15,6 +15,10 @@ static volatile uint32_t tx_dropped;
 
 void uart_debug_init(void)
 {
+    USART1->CR1 = 0U; /* RM0433 p.2082, p.2099: BRR and PRESC are writable only while UE = 0. */
+    USART1->PRESC = 0U; /* RM0433 p.2099: PRESCALER = 0000, clock not divided. Write while UE = 0. */
+    
+    // DEBUG_BAUD/2U is added to make the nearest Round off instead of just the FLOOR.
     USART1->BRR = (CLOCK_PCLK_HZ + (DEBUG_BAUD / 2U)) / DEBUG_BAUD;
     /* RM0433 p.2025: enable the USART first, then the transmitter. */
     USART1->CR1 = USART_CR1_UE;

@@ -50,7 +50,7 @@ _Static_assert(CLOCK_FDCAN_HZ / BIT_PRESCALER / DATA_TQ == 2000000U, "Data bitra
 /* Global filter: 2 = reject frames that match no filter, p.2539. */
 #define REJECT_NON_MATCHING 2U
 
-/* Rx and Tx element words, p.2513. */
+/* Rx element p.2511, Tx element p.2513. */
 #define ELEMENT_ID_POS   18U
 #define ELEMENT_ID_MASK  0x7FFU
 #define ELEMENT_DLC_POS  16U
