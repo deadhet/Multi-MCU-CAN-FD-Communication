@@ -36,6 +36,7 @@ void uart_debug_write(const char *text)
     }
 
     uint32_t head = tx_head;
+    // this makes result MOD of 2048, one slot always stays empty signifying head == tail means empty.
     uint32_t free_bytes = (tx_tail - head - 1U) & TX_RING_MASK;
     if (len > free_bytes) {
         tx_dropped++;
@@ -46,13 +47,14 @@ void uart_debug_write(const char *text)
         tx_ring[head] = (uint8_t)text[i];
         head = (head + 1U) & TX_RING_MASK;
     }
-
+    // this line ensures that once the data is into the ring, it only starts to send data then.
     __DMB(); /* Data must be in the ring before the ISR can see the new head. */
     tx_head = head;
 
     USART1->CR1 |= USART_CR1_TXEIE;
 }
 
+//converts the 32bit integer to string values of each digit.
 void uart_debug_write_u32(uint32_t value)
 {
     char text[11]; /* 10 digits for 2^32 - 1, plus the terminator */

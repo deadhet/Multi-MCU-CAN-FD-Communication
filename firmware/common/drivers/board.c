@@ -7,7 +7,9 @@
 #define PIN_MODE_AF 2U
 #define USART1_TX_AF 7U
 #define FDCAN1_AF 9U
-#define PIN_SPEED_HIGH 2U
+/* Medium: 60 MHz at 3.3 V and 50 pF without the I/O compensation cell (DS p.141, Table 53).
+ * CAN FD at 2 Mbit/s needs 1 MHz. */
+#define PIN_SPEED_MEDIUM 1U
 #define FDCAN_CLOCK_PLL2Q 2U
 
 /* USART1 TX on PA9. p.372: read back the enable, then dummy-read the peripheral. */
@@ -41,9 +43,13 @@ static void fdcan1_pins_init(void)
     (void)GPIOD->MODER;
     (void)FDCAN1->CCCR;
 
+    // GPIOD->AFR[0]  = (GPIOD->AFR[0]  & ~0x000000FFUL) | (0x9UL << 0) | (0x9UL << 4);
     GPIOD->AFR[0] = (GPIOD->AFR[0] & ~(GPIO_AFRL_AFSEL0 | GPIO_AFRL_AFSEL1))
-                  | (FDCAN1_AF << GPIO_AFRL_AFSEL0_Pos) | (FDCAN1_AF << GPIO_AFRL_AFSEL1_Pos);
-    GPIOD->OSPEEDR = (GPIOD->OSPEEDR & ~GPIO_OSPEEDR_OSPEED1) | (PIN_SPEED_HIGH << GPIO_OSPEEDR_OSPEED1_Pos);
+                  | (FDCAN1_AF << GPIO_AFRL_AFSEL0_Pos) | (FDCAN1_AF << GPIO_AFRL_AFSEL1_Pos); 
+    // GPIOD->OSPEEDR = (GPIOD->OSPEEDR & ~0x0000000CUL) | (0x2UL << 2);
+    GPIOD->OSPEEDR = (GPIOD->OSPEEDR & ~GPIO_OSPEEDR_OSPEED1) | (PIN_SPEED_MEDIUM << GPIO_OSPEEDR_OSPEED1_Pos);
+    
+    // GPIOD->MODER   = (GPIOD->MODER   & ~0x0000000FUL) | (0x2UL << 0) | (0x2UL << 2);
     GPIOD->MODER = (GPIOD->MODER & ~(GPIO_MODER_MODE0 | GPIO_MODER_MODE1))
                  | (PIN_MODE_AF << GPIO_MODER_MODE0_Pos) | (PIN_MODE_AF << GPIO_MODER_MODE1_Pos);
 }
