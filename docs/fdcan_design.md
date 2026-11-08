@@ -9,7 +9,11 @@ Covers `firmware/common/drivers/fdcan.c`. `RM` is RM0433 Rev 9, and `DS` is DS12
 | Kernel clock | PLL2 Q, 80 MHz (`FDCANSEL = 10`) | RM p.413 |
 | Maximum kernel clock at VOS0 | 125 MHz | RM Table 60, p.355 |
 | Bus clock | APB1, `FDCANEN` in `RCC_APB1HENR` | |
+| Clock calibration unit | Bypassed, `CDIV` = divide by 1, so the tq clock = 80 MHz kernel clock | RM p.2484, p.2488 |
+| Time quanta clock ≤ APB clock | 80 MHz ≤ 120 MHz | RM p.2485 |
 | RX, TX | PD0, PD1, AF9 | DS p.92 |
+
+After reset the calibration unit gives no valid clock to the FDCAN (RM p.2484). `fdcan_init()` sets `FDCAN_CCU_CCFG.BCC` = 1 and `CDIV` = 0 while FDCAN1 has `INIT` and `CCE` set, which is when `CCFG` is writable. RM p.2582 calls bypass the default, but the reset value on p.2581 (`0x00000004`) has `BCC` = 0, so the driver sets it explicitly. Renode has only a placeholder at `0x4000A800`, so the write does nothing there.
 
 ## Bit timing
 
@@ -19,10 +23,12 @@ Bit time in tq = 1 (sync) + TSEG1 + TSEG2. Sample point = (1 + TSEG1) / total. R
 
 | Phase | Bitrate | Total tq | TSEG1 | TSEG2 | SJW | Sample point | Register |
 |---|---|---|---|---|---|---|---|
-| Nominal | 500 kbit/s | 40 MHz / 500 kHz = 80 | 63 | 16 | 16 | 64 / 80 = 80% | `NBTP = 0x1E013E0F` |
+| Nominal | 500 kbit/s | 40 MHz / 500 kHz = 80 | 63 | 16 | 15 | 64 / 80 = 80% | `NBTP = 0x1C013E0F` |
 | Data | 2 Mbit/s | 40 MHz / 2 MHz = 20 | 14 | 5 | 5 | 15 / 20 = 75% | `DBTP = 0x00810D44` |
 
 `_Static_assert` checks in `fdcan.c` stop the build if the bitrates no longer follow from the clock.
+
+Nominal SJW is 15, one less than TSEG2, because RM p.2526 says `NSJW` must be smaller than `NTSEG2`. The data phase has no such rule (RM p.2521), so data SJW equals TSEG2, the CAN standard's limit. A `_Static_assert` checks the nominal rule.
 
 ## Transmitter delay compensation
 

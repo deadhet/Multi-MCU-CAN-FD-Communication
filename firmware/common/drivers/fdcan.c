@@ -15,7 +15,7 @@
 
 #define NOMINAL_TSEG1 63U
 #define NOMINAL_TSEG2 16U
-#define NOMINAL_SJW   16U
+#define NOMINAL_SJW   15U /* p.2526: NSJW must be smaller than NTSEG2 */
 #define NOMINAL_TQ    (1U + NOMINAL_TSEG1 + NOMINAL_TSEG2)
 
 #define DATA_TSEG1 14U
@@ -25,6 +25,7 @@
 
 _Static_assert(CLOCK_FDCAN_HZ / BIT_PRESCALER / NOMINAL_TQ == 500000U, "Nominal bitrate must be 500 kbit/s");
 _Static_assert(CLOCK_FDCAN_HZ / BIT_PRESCALER / DATA_TQ == 2000000U, "Data bitrate must be 2 Mbit/s");
+_Static_assert(NOMINAL_SJW < NOMINAL_TSEG2, "NSJW must be smaller than NTSEG2 (p.2526)");
 
 /* Secondary sample point at the data sample point, in kernel clock periods. */
 #define TDC_OFFSET ((1U + DATA_TSEG1) * BIT_PRESCALER)
@@ -158,6 +159,12 @@ bool fdcan_init(fdcan_mode_t mode, const fdcan_id_range_t *ranges, uint32_t rang
     }
     FDCAN1->CCCR |= FDCAN_CCCR_CCE;
 
+    /* p.2484: after reset the clock calibration unit gives no valid clock, and CCFG is
+     * writable only while FDCAN1 has INIT and CCE set. Bypass it with CDIV = divide by 1,
+     * so the bit timing runs straight from the 80 MHz kernel clock (p.2488). The manual's
+     * reset value (p.2581) disagrees with its "bypass is default" text, so set it here. */
+    FDCAN_CCU->CCFG = (FDCAN_CCU->CCFG & ~FDCANCCU_CCFG_CDIV) | FDCANCCU_CCFG_BCC;
+
     FDCAN1->CCCR |= FDCAN_CCCR_FDOE | FDCAN_CCCR_BRSE;
 
     if (mode == FDCAN_MODE_LOOPBACK) {
@@ -192,7 +199,7 @@ bool fdcan_send(uint32_t id, const uint8_t *data, uint8_t len)
 
     if ((status & FDCAN_TXFQS_TFQF) != 0U) {
         /* Renode does not restart pending frames after a reconnect, and a new add request is
-         * what restarts it. Real hardware ignores a request for a pending buffer (p.2552). */
+         * what restarts it. Real hardware ignores a request for a pending buffer (p.2553). */
         FDCAN1->TXBAR = FDCAN1->TXBRP;
         tx_fifo_full++;
         return false;
