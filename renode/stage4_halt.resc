@@ -1,0 +1,12 @@
+# Stage 4: MCU3's CPU halted from 1.5 s to 2.0 s. Its FDCAN keeps receiving, so the
+# 16-deep Rx FIFO overflows. Tests the frame-lost path and the lost-frame count.
+#   renode --disable-gui --console -e "include @renode/stage4_halt.resc" </dev/null
+include $ORIGIN/system.resc
+emulation RunFor "1.5"
+mach set "mcu3"
+sysbus.cpu IsHalted true
+emulation RunFor "0.5"
+mach set "mcu3"
+sysbus.cpu IsHalted false
+emulation RunFor "1.6"
+quit

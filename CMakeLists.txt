@@ -23,6 +23,8 @@ set(COMMON_SOURCES
   ${FW}/common/drivers/systick.c
   ${FW}/common/drivers/uart.c
   ${FW}/common/sched/scheduler.c
+  ${FW}/common/comm/comm.c
+  ${FW}/common/comm/crc16.c
 )
 
 # Builds one image from the shared source tree.

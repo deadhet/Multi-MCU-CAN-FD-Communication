@@ -1,0 +1,53 @@
+# Stage 4: machine mcu3 runs node2.elf, so two nodes send as node 2 (IDs 0x022 and 0x032).
+# Expect duplicate_node on both copies of node 2 and duplicates on MCU1 and MCU4.
+#   renode --disable-gui --console -e "include @renode/stage4_dup_node.resc" </dev/null
+
+emulation CreateCANHub "canHub"
+
+mach create "mcu1"
+$node1=$ORIGIN/../build/node1.elf
+machine LoadPlatformDescription $ORIGIN/node.repl
+sysbus.usart1 CreateFileBackend $ORIGIN/../logs/mcu1.log true
+connector Connect sysbus.fdcan1 canHub
+macro reset
+"""
+    sysbus LoadELF $node1
+"""
+runMacro $reset
+
+mach create "mcu2"
+$node2=$ORIGIN/../build/node2.elf
+machine LoadPlatformDescription $ORIGIN/node.repl
+sysbus.usart1 CreateFileBackend $ORIGIN/../logs/mcu2.log true
+connector Connect sysbus.fdcan1 canHub
+macro reset
+"""
+    sysbus LoadELF $node2
+"""
+runMacro $reset
+
+mach create "mcu3"
+$node3=$ORIGIN/../build/node2.elf
+machine LoadPlatformDescription $ORIGIN/node.repl
+sysbus.usart1 CreateFileBackend $ORIGIN/../logs/mcu3.log true
+connector Connect sysbus.fdcan1 canHub
+macro reset
+"""
+    sysbus LoadELF $node3
+"""
+runMacro $reset
+
+mach create "mcu4"
+$node4=$ORIGIN/../build/node4.elf
+machine LoadPlatformDescription $ORIGIN/node.repl
+sysbus.usart1 CreateFileBackend $ORIGIN/../logs/mcu4.log true
+connector Connect sysbus.fdcan1 canHub
+macro reset
+"""
+    sysbus LoadELF $node4
+"""
+runMacro $reset
+
+emulation SetGlobalQuantum "0.0001"
+emulation RunFor "2.1"
+quit

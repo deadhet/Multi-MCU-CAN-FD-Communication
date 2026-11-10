@@ -38,7 +38,7 @@ Arm 16.1 and 15.3 download URLs returned 404, so 15.2.rel1 is the newest found.
 
 | Purpose | Command |
 |---|---|
-| Create hub | `emulation CreateCANHub "canHub"` |
+| Create hub | `emulation CreateCANHub "canHub"`. Full form: `CreateCANHub (name, loopback = False, useNetworkByteOrderForLogging = True)`, so a sender does not receive its own frames |
 | Connect node | `connector Connect sysbus.fdcan1 canHub` |
 | Disconnect node | `connector Disconnect sysbus.fdcan1 canHub` |
 | Pick machine | `mach set "mcu3"` |
