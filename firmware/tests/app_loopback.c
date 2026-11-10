@@ -2,19 +2,23 @@
  *
  * Phase 1 sends one frame per case and checks what comes back: ID, length, FD and BRS flags,
  * every payload byte, and that the hardware filters block IDs outside the ranges.
- * Phase 2 stops reading while frames arrive, to check the "full ring drops newest" rule. */
+ * Phase 2 stops reading, puts one frame into queue 1, then floods queue 0 with 40 frames. Queue
+ * 0 must keep the newest 8 in order, and queue 1 must still hold its frame untouched. */
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 #include "drivers/board.h"
 #include "drivers/fdcan.h"
+#include "drivers/frame_queue.h"
 #include "drivers/uart.h"
 #include "sched/scheduler.h"
 
 #define STEP_PERIOD_MS 5U
 #define OVERFLOW_FRAMES 40U
-#define RX_RING_SLOTS 32U
 #define ACCEPTED_CASES 4U
+#define QUEUE_FLOOD 0U    /* 0x031-0x034 */
+#define QUEUE_QUIET 1U    /* 0x021-0x024 */
+#define QUIET_SEED 100U   /* Payload seed of the single frame left in the quiet queue */
 #define TASK_COUNT (sizeof(tasks) / sizeof(tasks[0]))
 
 typedef struct {
@@ -24,8 +28,8 @@ typedef struct {
 } test_case_t;
 
 static const fdcan_id_range_t ranges[] = {
-    { 0x021U, 0x024U },
-    { 0x031U, 0x034U },
+    { 0x021U, 0x024U, QUEUE_QUIET },
+    { 0x031U, 0x034U, QUEUE_FLOOD },
 };
 
 static const test_case_t cases[] = {
@@ -43,6 +47,7 @@ static const test_case_t cases[] = {
 typedef enum {
     PHASE_CASES,
     PHASE_SETTLE,
+    PHASE_QUIET,
     PHASE_OVERFLOW,
     PHASE_DONE
 } phase_t;
@@ -111,19 +116,41 @@ static void finish_overflow(void)
     can_rx_slot_t frame;
     fdcan_stats_t stats;
     uint32_t stored = 0U;
+    uint32_t quiet = 0U;
+    uint32_t wrong = 0U;
 
-    while (fdcan_receive(&frame)) {
+    /* Flooded queue: the oldest 32 were given up, so frame k read here is frame 32 + k sent. */
+    while (fdcan_receive(QUEUE_FLOOD, &frame)) {
+        uint32_t seed = (OVERFLOW_FRAMES - FRAME_QUEUE_DEPTH) + stored;
+
+        wrong += ((frame.id == 0x031U) && (frame.len == 16U)) ? 0U : 1U;
+        for (uint32_t i = 0U; i < frame.len; i++) {
+            wrong += (frame.data[i] == pattern_byte(seed, i)) ? 0U : 1U;
+        }
         stored++;
+    }
+    /* Quiet queue: its one frame must have survived the flood next door. */
+    while (fdcan_receive(QUEUE_QUIET, &frame)) {
+        wrong += ((frame.id == 0x022U) && (frame.len == 32U)) ? 0U : 1U;
+        for (uint32_t i = 0U; i < frame.len; i++) {
+            wrong += (frame.data[i] == pattern_byte(QUIET_SEED, i)) ? 0U : 1U;
+        }
+        quiet++;
     }
     fdcan_get_stats(&stats);
 
-    print_number_field("LOOPBACK ring sent=", overflow_sent);
+    print_number_field("LOOPBACK queues sent=", overflow_sent);
     print_number_field(" stored=", stored);
-    print_number_field(" dropped=", stats.rx_ring_dropped);
+    print_number_field(" overwritten=", stats.rx_overwritten[QUEUE_FLOOD]);
+    print_number_field(" quiet=", quiet);
+    print_number_field(" quiet_overwritten=", stats.rx_overwritten[QUEUE_QUIET]);
+    print_number_field(" wrong=", wrong);
     uart_debug_write("\n");
 
-    bool pass = (bad == 0U) && (received == ACCEPTED_CASES) && (stored == RX_RING_SLOTS)
-             && (stats.rx_ring_dropped == (OVERFLOW_FRAMES - RX_RING_SLOTS));
+    bool pass = (bad == 0U) && (received == ACCEPTED_CASES) && (stored == FRAME_QUEUE_DEPTH)
+             && (stats.rx_overwritten[QUEUE_FLOOD] == (OVERFLOW_FRAMES - FRAME_QUEUE_DEPTH))
+             && (quiet == 1U) && (stats.rx_overwritten[QUEUE_QUIET] == 0U) && (wrong == 0U)
+             && (stats.rx_unrouted == 0U);
     uart_debug_write(pass ? "LOOPBACK PASS\n" : "LOOPBACK FAIL\n");
 }
 
@@ -154,7 +181,14 @@ static void step_task(void)
         }
         print_number_field("LOOPBACK bad length refused=", (bad == 0U) ? 1U : 0U);
         uart_debug_write("\n");
-        phase = PHASE_OVERFLOW;
+        phase = PHASE_QUIET;
+        break;
+
+    case PHASE_QUIET:
+        fill_payload(data, QUIET_SEED, 32U);
+        if (fdcan_send(0x022U, data, 32U)) {
+            phase = PHASE_OVERFLOW;
+        }
         break;
 
     case PHASE_OVERFLOW:
@@ -198,8 +232,10 @@ int main(void)
             sched_run_due(tasks, TASK_COUNT);
         }
 
-        /* Phase 2 must leave frames in the ring on purpose. */
-        if ((phase <= PHASE_SETTLE) && fdcan_receive(&frame)) {
+        /* Phase 2 must leave frames in the queues on purpose. In phase 1 only one frame is in
+         * flight at a time, so reading both queues keeps the send order. */
+        if ((phase <= PHASE_SETTLE)
+            && (fdcan_receive(QUEUE_FLOOD, &frame) || fdcan_receive(QUEUE_QUIET, &frame))) {
             check_frame(&frame);
         }
     }

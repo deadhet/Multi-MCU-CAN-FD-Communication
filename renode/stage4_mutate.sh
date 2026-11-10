@@ -28,7 +28,7 @@ seq_line='    uint32_t seq = tx_seq[msg] + 1U;'
 crc_line='    put_u16_le(&buf[msg_info[msg].crc_offset], frame_crc(id, buf, msg_info[msg].crc_offset));'
 send_line='    if (!fdcan_send(id, buf, msg_info[msg].len)) {'
 id_line='    uint32_t id = MAKE_ID(msg_info[msg].type, NODE_ID);'
-range_line='        { MAKE_ID(TYPE_PARAM, 1U), MAKE_ID(TYPE_PARAM, COMM_NODE_COUNT) },'
+range_line='        { MAKE_ID(TYPE_HEARTBEAT, 1U), MAKE_ID(TYPE_HEARTBEAT, COMM_NODE_COUNT), QUEUE_HEARTBEAT },'
 elem_line='    *ram_word(element + 4U) = (dlc << ELEMENT_DLC_POS) | ELEMENT_BRS | ELEMENT_FDF;'
 
 p2() { # code to run only on node 2's parameter blocks
@@ -44,7 +44,7 @@ dup)     swap "$comm" "$seq_line" "$seq_line"$'\n'"$(p2 'seq = 1U;')" ;;
 old)     swap "$comm" "$seq_line" "$seq_line"$'\n'"$(p2 'seq = 1000U - tx_stats.sent[msg];')" ;;
 gap)     swap "$comm" "$seq_line" "$seq_line"$'\n'"$(p2 'seq = 2U * (tx_stats.sent[msg] + 1U);')" ;;
 badid)   swap "$comm" "$id_line" "$id_line"$'\n'"$(p2 'id = MAKE_ID(TYPE_PARAM, 5U);')"
-         swap "$comm" "$range_line" $'#if NODE_ID == 1 /* MUTANT */\n        { MAKE_ID(TYPE_PARAM, 1U), MAKE_ID(TYPE_PARAM, 15U) },\n#else\n'"$range_line"$'\n#endif' ;;
+         swap "$comm" "$range_line" "$range_line"$'\n#if NODE_ID == 1 /* MUTANT: also accept 0x025-0x02F */\n        { MAKE_ID(TYPE_PARAM, 5U), MAKE_ID(TYPE_PARAM, 15U), QUEUE_HEARTBEAT },\n#endif' ;;
 nobrs)   swap "$fdcan" "$elem_line" $'#if NODE_ID == 2 /* MUTANT */\n    *ram_word(element + 4U) = (dlc << ELEMENT_DLC_POS) | ELEMENT_FDF;\n#else\n'"$elem_line"$'\n#endif' ;;
 *) echo "unknown mutation $name" >&2; exit 2 ;;
 esac

@@ -63,7 +63,7 @@ typedef struct {
     uint32_t old_seq;        /* Check 7: sequence went back */
     uint32_t lost_frames;    /* Check 7: gap, frames still accepted */
     uint32_t value_rejected; /* Check 8, per value: needs the system table, not counted yet */
-    uint32_t rx_overflow;    /* Lost before comm saw them: hardware FIFO events + ring drops */
+    uint32_t rx_overflow;    /* Lost before comm saw them: hardware FIFO events + RAM queue overwrites */
 } comm_errors_t;
 
 typedef struct {

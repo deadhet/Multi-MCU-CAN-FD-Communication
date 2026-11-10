@@ -40,6 +40,12 @@
 #define BYTE_SOURCE   1U
 #define BYTE_SEQUENCE 4U
 
+/* Driver RAM queues: 0 = heartbeats (and our own IDs), 1-3 = the peers' parameter blocks in
+ * node order, skipping this node. Read in that order, heartbeats first. */
+#define QUEUE_HEARTBEAT 0U
+#define PARAM_QUEUE(node) (((node) == NODE_ID) ? QUEUE_HEARTBEAT : (((node) < NODE_ID) ? (node) : ((node) - 1U)))
+
+_Static_assert(FDCAN_RX_QUEUES == COMM_NODE_COUNT, "one heartbeat queue plus one per peer");
 _Static_assert(PARAM_VALUES + (COMM_PARAMS_PER_NODE * 4U) == PARAM_CRC, "values must end at the CRC");
 _Static_assert(PARAM_CRC + 2U + 2U == PARAM_LEN, "CRC then 2 padding bytes");
 _Static_assert(HB_CRC + 2U == HB_LEN, "heartbeat CRC is the last field");
@@ -130,10 +136,16 @@ bool comm_init(void)
 
     /* Check 0: hardware passes only parameter blocks and heartbeats from nodes 1-4. Our own IDs
      * are included on purpose, so another node using them is seen (duplicate_node). The resync
-     * IDs 0x011-0x014 are reserved and rejected. */
+     * IDs 0x011-0x014 are reserved and rejected.
+     * Each range also picks a RAM queue: all heartbeats share one, and so do our own IDs, which
+     * only arrive from a duplicate node. Each peer's parameter blocks get their own queue, so a
+     * flood from one node cannot push out the others. */
     static const fdcan_id_range_t ranges[] = {
-        { MAKE_ID(TYPE_PARAM, 1U), MAKE_ID(TYPE_PARAM, COMM_NODE_COUNT) },
-        { MAKE_ID(TYPE_HEARTBEAT, 1U), MAKE_ID(TYPE_HEARTBEAT, COMM_NODE_COUNT) },
+        { MAKE_ID(TYPE_HEARTBEAT, 1U), MAKE_ID(TYPE_HEARTBEAT, COMM_NODE_COUNT), QUEUE_HEARTBEAT },
+        { MAKE_ID(TYPE_PARAM, 1U), MAKE_ID(TYPE_PARAM, 1U), PARAM_QUEUE(1U) },
+        { MAKE_ID(TYPE_PARAM, 2U), MAKE_ID(TYPE_PARAM, 2U), PARAM_QUEUE(2U) },
+        { MAKE_ID(TYPE_PARAM, 3U), MAKE_ID(TYPE_PARAM, 3U), PARAM_QUEUE(3U) },
+        { MAKE_ID(TYPE_PARAM, 4U), MAKE_ID(TYPE_PARAM, 4U), PARAM_QUEUE(4U) },
     };
     return fdcan_init(FDCAN_MODE_NORMAL, ranges, sizeof(ranges) / sizeof(ranges[0]));
 }
@@ -263,9 +275,13 @@ bool comm_receive(comm_frame_t *out)
 {
     can_rx_slot_t frame; /* Local copy: checked and decoded here, never touched by the ISR */
 
-    while (fdcan_receive(&frame)) {
-        if (validate(&frame, out)) {
-            return true;
+    /* Heartbeat queue first on every call: it carries health and restart information. Every
+     * frame is still validated, so the counters see all of them. */
+    for (uint32_t q = 0U; q < FDCAN_RX_QUEUES; q++) {
+        while (fdcan_receive(q, &frame)) {
+            if (validate(&frame, out)) {
+                return true;
+            }
         }
     }
     return false;
@@ -287,7 +303,10 @@ void comm_get_errors(comm_errors_t *out)
 
     fdcan_get_stats(&drv);
     *out = errors;
-    out->rx_overflow = drv.rx_fifo_lost + drv.rx_ring_dropped;
+    out->rx_overflow = drv.rx_fifo_lost;
+    for (uint32_t q = 0U; q < FDCAN_RX_QUEUES; q++) {
+        out->rx_overflow += drv.rx_overwritten[q];
+    }
 }
 
 uint16_t comm_error_summary(void)
@@ -331,8 +350,9 @@ static void write_field(const char *name, uint32_t value)
  *   MCU2 t=1005 tx p=100 h=10 nq=0/0
  *   MCU2 rx n1 p=100/100 h=10/10 n3 p=100/100 h=10/10 n4 p=100/100 h=10/10
  *   MCU2 err id=0 dupnode=0 fmt=0 len=0 ver=0 src=0 crc=0 dup=0 old=0 lost=0 val=0 ovf=0
- *   MCU2 drv fifo_lost=0 ring_drop=0 tx_full=0
- * In rx, p=a/b means a frames accepted and b the last sequence seen. */
+ *   MCU2 drv fifo_lost=0 ovw=0/0/0/0 unrouted=0 tx_full=0
+ * In rx, p=a/b means a frames accepted and b the last sequence seen. In drv, ovw lists the
+ * frames each RAM queue gave up: heartbeats, then the peers in node order. */
 void comm_debug_report(void)
 {
     comm_errors_t e;
@@ -371,7 +391,11 @@ void comm_debug_report(void)
     write_field(" val=", e.value_rejected);
     write_field(" ovf=", e.rx_overflow);
     write_field("\n" NODE_TAG " drv fifo_lost=", drv.rx_fifo_lost);
-    write_field(" ring_drop=", drv.rx_ring_dropped);
+    write_field(" ovw=", drv.rx_overwritten[0]);
+    for (uint32_t q = 1U; q < FDCAN_RX_QUEUES; q++) {
+        write_field("/", drv.rx_overwritten[q]);
+    }
+    write_field(" unrouted=", drv.rx_unrouted);
     write_field(" tx_full=", drv.tx_fifo_full);
     uart_debug_write("\n");
 }

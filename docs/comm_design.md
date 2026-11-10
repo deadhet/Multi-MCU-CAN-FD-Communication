@@ -8,6 +8,7 @@ Covers `firmware/common/comm/`. Section numbers (§) refer to the Design Documen
 |---|---|---|
 | IDs: `(type << 4) \| node`, parameter block `0x021`–`0x024`, heartbeat `0x031`–`0x034` | `MAKE_ID()` | §5.2 |
 | Hardware filters for those two ranges; resync IDs `0x011`–`0x014` rejected | `comm_init()` | §5.7 check 0 |
+| RAM queue per range: queue 0 = all heartbeats + our own IDs (duplicate node only), queues 1–3 = each peer's parameter blocks. Read heartbeats first, every frame validated | `comm_init()`, `comm_receive()` | §4.3 (changed, see below) |
 | Pack the 32-byte parameter block and 16-byte heartbeat, little-endian, field by field | `comm_send_param_block()`, `comm_send_heartbeat()` | §5.3 |
 | CRC-16/CCITT-FALSE over the ID (2 bytes LE) + payload before the CRC, as the last packing step | `frame_crc()`, `crc16.c` | §5.5 |
 | CRC check value `"123456789"` → `0x29B1` tested at start-up; init fails if wrong | `comm_init()` | §5.5 |
@@ -58,7 +59,7 @@ Heartbeat, 16 bytes:
 | 6 | CRC-16 with Data ID | `bad_crc` |
 | 7 | `d = (int32_t)(seq − last)`: 0 → duplicate, < 0 → old, > 1 → count `d − 1` lost and accept | `duplicate`, `old_seq`, `lost_frames` |
 | 8 | Per value (source status, NaN/Inf, range) | `value_rejected`: needs `system_table.c`, not in this stage |
-| — | Lost before comm saw it | `rx_overflow` = hardware FIFO overflow events + software ring drops |
+| — | Lost before comm saw it | `rx_overflow` = hardware FIFO overflow events + RAM queue overwrites |
 
 A frame only changes stream state after passing check 7. Rejected frames change nothing.
 
@@ -78,9 +79,12 @@ Scripts are in `renode/`. Logs were copied to `logs/stage4_<scenario>_mcuN.log`.
 | 4 nodes | `stage4_four_nodes.resc` | At t=3005, every node sent 300 and 30; every receiver accepted 300/300 and 30/30 from each of the other three. `stage4_crosscheck.awk`: 48 of 48 pairs match, all error counters 0 |
 | MCU3 off the bus 1.5–2.5 s | `stage4_reconnect.resc` | MCU3's Tx FIFO filled with 4 frames; 53 further sends counted as `tx_full`. After reconnect the driver's `TXBAR = TXBRP` restart sent them. Peers then held exactly MCU3's 202 and 21 queued frames, `lost` = 0. MCU3 counted `lost` = 330 = 3 peers × (100 + 10) |
 | MCU3 CPU halted 1.5–2.0 s | `stage4_halt.resc` | 165 frames arrived during the halt; the 16-deep FIFO kept 16. MCU3: `fifo_lost` = 1 event, `lost` = 149 = 165 − 16. Peers: no gaps |
+| MCU3 main loop busy 1.5–2.0 s | `stage4_overload.sh stall` | The interrupt kept running; each RAM queue kept its newest 8. Node 1's first frames after the stall: seq 192–200, aged 80 → 0 ms (with the old 32-slot drop-newest ring: seq 150–159, aged 500 → 410 ms). `ovw` = 7/42/43/43, `lost` = 135 = their sum |
+| Same, and node 2 floods 20 frames/ms from 1.6 to 1.9 s | `stage4_overload.sh babble` | MCU3: node 2's queue gave up 6043; heartbeats, n1, n4 exactly as in the stall run (7, 42, 43). MCU1, not stalled: gave up 301 of node 2's frames, n3 250/250, n4 300/300 |
 | MCU3 reset at 1.5 s | `stage4_reset.resc` | Peers rejected MCU3's restarted streams: `old` = 161, `dup` = 2, until its new sequence passed the old value (150). See the open question below |
 | Two nodes as node 2 | `stage4_dup_node.resc` | Each copy of node 2: `dupnode` = 220. MCU1 and MCU4: `dup` = 220 |
-| Loopback self test | `stage3_loopback.resc` | `LOOPBACK PASS` |
+| Loopback self test | `stage3_loopback.resc` | `LOOPBACK PASS`. Queue phase: 1 frame left in queue 1, then 40 frames into queue 0. Queue 0 kept frames 32–39 in order (32 overwritten, every byte checked); queue 1's frame survived |
+| Queue logic on the PC | `firmware/tests/host/run_host_tests.sh` | `FRAME QUEUE PASS`, 8 cases including a frame landing during the copy |
 
 ## Mutation tests
 
@@ -96,9 +100,13 @@ Scripts are in `renode/`. Logs were copied to `logs/stage4_<scenario>_mcuN.log`.
 | Sequence always 1 | 1, 10 | `dup` = 99 |
 | Sequence counting down | 1, 10 | `old` = 99 |
 | Sequence +2 each time | 100, 10 (last 200) | `lost` = 99, frames accepted |
-| ID `0x025` (node 5) | 0, 10 | MCU1 (filter widened to `0x021`–`0x02F`): `id` = 100. MCU3, MCU4: dropped by hardware, all counters 0 |
+| ID `0x025` (node 5) | 0, 10 | MCU1 (extra filter `0x025`–`0x02F`, heartbeat queue): `id` = 100. MCU3, MCU4: dropped by hardware, all counters 0 |
 
 Node 2's own counters stayed 0 in every case, and the other streams were unaffected.
+
+## Changed from the Design Document (11 Nov 2026, Het's decision)
+
+§4.3 specifies one 32-slot CAN Rx ring that drops the newest frame when full. Now there are 4 RAM queues of 8 slots: one for heartbeats (and our own IDs), one per peer for parameter blocks. Each keeps its newest frames by lap detection, with no interrupt masking and one writer per index (`docs/fdcan_design.md`, receive path). Reasons: after a main-loop stall the old ring delivered data 410–500 ms old, and one flooding node could fill the shared ring for everyone. The hardware Rx FIFO stays in blocking mode. The Design Document PDF itself is not changed.
 
 ## Open items
 

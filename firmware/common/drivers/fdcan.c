@@ -6,6 +6,7 @@
 #include "stm32h743xx.h"
 #include "drivers/clock.h"
 #include "drivers/fdcan.h"
+#include "drivers/frame_queue.h"
 #include "drivers/systick.h"
 
 #define WAIT_TRIES 1000000U
@@ -61,21 +62,19 @@ _Static_assert(NOMINAL_SJW < NOMINAL_TSEG2, "NSJW must be smaller than NTSEG2 (p
 
 #define FDCAN_PRIORITY 1U
 
-#define RX_RING_SIZE 32U /* Must be a power of two */
-#define RX_RING_MASK (RX_RING_SIZE - 1U)
-
 _Static_assert(sizeof(can_rx_slot_t) == 76U, "can_rx_slot_t must be 76 bytes");
 _Static_assert(offsetof(can_rx_slot_t, data) == 12U, "data must follow the 12-byte header");
 
 static const uint8_t dlc_to_len[16] = { 0U, 1U, 2U, 3U, 4U, 5U, 6U, 7U, 8U, 12U, 16U, 20U, 24U, 32U, 48U, 64U };
 
-/* Free-running indices, so all 32 slots are usable. used = head - tail. */
-static can_rx_slot_t rx_ring[RX_RING_SIZE];
-static volatile uint32_t rx_head; /* Written only by the ISR */
-static volatile uint32_t rx_tail; /* Written only by fdcan_receive() */
+/* RAM queues filled by the ISR and read by the main loop (drivers/frame_queue.h). The caller's
+ * ID ranges are both the hardware filters and the table that picks the queue. */
+static frame_queue_t rx_queues[FDCAN_RX_QUEUES];
+static fdcan_id_range_t rx_routes[MAX_FILTERS];
+static uint32_t rx_route_count;
 
-static volatile uint32_t rx_ring_dropped;
 static volatile uint32_t rx_fifo_lost;
+static volatile uint32_t rx_unrouted;
 static uint32_t tx_fifo_full;
 
 /* Message RAM must be accessed as 32-bit words. */
@@ -151,13 +150,26 @@ bool fdcan_init(fdcan_mode_t mode, const fdcan_id_range_t *ranges, uint32_t rang
     if (range_count > MAX_FILTERS) {
         return false;
     }
+    for (uint32_t i = 0U; i < range_count; i++) {
+        if (ranges[i].queue >= FDCAN_RX_QUEUES) {
+            return false;
+        }
+    }
 
     /* p.2461: configuration needs both INIT and CCE. */
     FDCAN1->CCCR |= FDCAN_CCCR_INIT;
     if (!wait_flag(&FDCAN1->CCCR, FDCAN_CCCR_INIT, FDCAN_CCCR_INIT)) {
         return false;
     }
-    FDCAN1->CCCR |= FDCAN_CCCR_CCE;
+    FDCAN1->CCCR |= FDCAN_CCCR_CCE; /* p.2462: also empties Rx FIFO 0, so the ISR finds nothing */
+
+    for (uint32_t i = 0U; i < range_count; i++) {
+        rx_routes[i] = ranges[i];
+    }
+    rx_route_count = range_count;
+    for (uint32_t q = 0U; q < FDCAN_RX_QUEUES; q++) {
+        frame_queue_reset(&rx_queues[q]);
+    }
 
     /* p.2484: after reset the clock calibration unit gives no valid clock, and CCFG is
      * writable only while FDCAN1 has INIT and CCE set. Bypass it with CDIV = divide by 1,
@@ -224,43 +236,51 @@ bool fdcan_send(uint32_t id, const uint8_t *data, uint8_t len)
     return true;
 }
 
-bool fdcan_receive(can_rx_slot_t *out)
+bool fdcan_receive(uint32_t queue, can_rx_slot_t *out)
 {
-    uint32_t tail = rx_tail;
-
-    if (tail == rx_head) {
-        return false;
-    }
-
-    __DMB(); /* Read the slot only after seeing the new head. */
-    *out = rx_ring[tail & RX_RING_MASK];
-    __DMB(); /* Finish the copy before the ISR may reuse the slot. */
-    rx_tail = tail + 1U;
-    return true;
+    return (queue < FDCAN_RX_QUEUES) && frame_queue_pop(&rx_queues[queue], out);
 }
 
 void fdcan_get_stats(fdcan_stats_t *out)
 {
-    out->rx_ring_dropped = rx_ring_dropped;
     out->rx_fifo_lost = rx_fifo_lost;
+    for (uint32_t q = 0U; q < FDCAN_RX_QUEUES; q++) {
+        out->rx_overwritten[q] = rx_queues[q].overwritten;
+    }
+    out->rx_unrouted = rx_unrouted;
     out->tx_fifo_full = tx_fifo_full;
+}
+
+/* First matching range, the same rule as the hardware filter list (p.2471). */
+static frame_queue_t *queue_for(uint32_t id)
+{
+    frame_queue_t *q = NULL;
+
+    for (uint32_t i = 0U; (i < rx_route_count) && (q == NULL); i++) {
+        if ((id >= rx_routes[i].first_id) && (id <= rx_routes[i].last_id)) {
+            q = &rx_queues[rx_routes[i].queue];
+        }
+    }
+    return q;
 }
 
 static void store_rx_element(uint32_t index)
 {
-    uint32_t head = rx_head;
-
-    if ((head - rx_tail) >= RX_RING_SIZE) {
-        rx_ring_dropped++;
-        return;
-    }
-
     uint32_t element = RX_OFFSET + (index * ELEMENT_SIZE);
     uint32_t word0 = *ram_word(element);
     uint32_t word1 = *ram_word(element + 4U);
-    can_rx_slot_t *slot = &rx_ring[head & RX_RING_MASK];
+    uint32_t id = (word0 >> ELEMENT_ID_POS) & ELEMENT_ID_MASK;
+    frame_queue_t *q = queue_for(id);
 
-    slot->id = (word0 >> ELEMENT_ID_POS) & ELEMENT_ID_MASK;
+    if (q == NULL) {
+        rx_unrouted++; /* Cannot happen while the filters and routes are the same list */
+        return;
+    }
+
+    /* No "full" check: a full queue overwrites its oldest frame (frame_queue.h). */
+    can_rx_slot_t *slot = frame_queue_next_slot(q);
+
+    slot->id = id;
     slot->rx_time_ms = systick_now_ms();
     slot->len = dlc_to_len[(word1 >> ELEMENT_DLC_POS) & ELEMENT_DLC_MASK];
     slot->flags = (((word1 & ELEMENT_FDF) != 0U) ? CAN_RX_FLAG_FD : 0U)
@@ -274,8 +294,7 @@ static void store_rx_element(uint32_t index)
         }
     }
 
-    __DMB(); /* The slot must be complete before the new head is visible. */
-    rx_head = head + 1U;
+    frame_queue_commit(q); /* Barrier, then the new frame becomes visible */
 }
 
 void FDCAN1_IT0_IRQHandler(void)

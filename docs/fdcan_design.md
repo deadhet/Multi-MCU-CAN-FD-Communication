@@ -55,23 +55,42 @@ Rx FIFO 1, Rx buffers, Tx event FIFO and extended filters are not used.
 
 ## Filters
 
-The caller passes ID ranges, so the driver stays unaware of the protocol. Each range becomes a range filter storing to Rx FIFO 0 (RM p.2516). Example word for `0x021`–`0x024`: `(1 << 27) | (0x021 << 16) | 0x024 = 0x08210024`.
+The caller passes ID ranges, so the driver stays unaware of the protocol. Each range becomes a range filter storing to Rx FIFO 0 (RM p.2516), and also names the RAM queue its frames go to (see below). Example word for `0x021`–`0x024`: `(1 << 27) | (0x021 << 16) | 0x024 = 0x08210024`.
 
 `GFC = 0x2B` rejects non-matching frames and remote frames (RM p.2539).
 
 ## Receive path
 
 1. A frame lands in Rx FIFO 0 and raises `RF0N` on interrupt line 0.
-2. `FDCAN1_IT0_IRQHandler()` clears the flag, then moves each element into the 32-slot ring. Priority 1, above SysTick and USART.
-3. `fdcan_receive()` copies the oldest slot out in the main loop.
+2. `FDCAN1_IT0_IRQHandler()` clears the flags, then moves each element into a RAM queue until the FIFO is empty. Priority 1, above SysTick and USART.
+3. `fdcan_receive(queue, &frame)` copies the oldest frame of that queue out in the main loop.
 
-The ring has one producer and one consumer. Indices run freely, so all 32 slots are usable: used = head − tail. Slot data is written, then `__DMB()`, then head moves. A full ring drops the newest frame and counts it.
+**Hardware FIFO: blocking mode** (`RXF0C` = `0x00100020`). A full FIFO keeps its frames and drops the new one, setting `RF0L` (RM p.2476). The ISR has the highest priority and copies a frame in about a microsecond, so the FIFO fills only if the ISR cannot run at all (interrupts off, CPU halted, fault). Overwrite mode was tried (10 Nov 2026) and dropped: it needs a skip rule while full (RM p.2476) for a case that does not happen in normal running.
+
+**RAM queues** (`drivers/frame_queue.c`): `FDCAN_RX_QUEUES` = 4 queues of 8 slots (76 bytes each, 2.4 KB in all, the same as the old 32-slot ring). The caller's range list is also the routing table: the ISR decodes the ID and uses the first matching range, like the hardware (RM p.2471). comm uses queue 0 for heartbeats and for its own IDs (only a duplicate node sends those), and one queue per peer for parameter blocks. A flood on one queue cannot push frames out of another.
+
+**Each queue keeps its newest frames, without masking interrupts (lap detection).**
+- `head` counts frames written and is written only by the ISR; `tail` counts frames taken and is written only by the main loop. Both count up forever; slot = index & 7.
+- The ISR never checks for full: it writes slot `head & 7`, `__DMB()`, `head + 1`. When the queue is full, that slot holds the oldest frame, so the newest frame wins.
+- `frame_queue_pop()`: if `head − tail > 8`, the ISR has lapped the reader; it counts `head − tail − 8` frames as overwritten and jumps to `tail = head − 8`, the oldest frame still intact. It copies that slot, then reads `head` again. Frame t is overwritten only when the ISR writes frame t + 8, which takes head past t + 8, and the ISR always finishes before the main loop continues. So `head − t ≤ 8` after the copy proves the copy is whole; otherwise it is thrown away and the loop goes round again.
+- A retry needs a frame to arrive during a ~1 µs copy; frames are ≥ ~100 µs apart, so there is at most one retry in practice.
+- Tested on the PC with forced timing (`firmware/tests/host/run_host_tests.sh`): lap, frame arriving during the copy (full and not full), 12 frames during one copy, counters wrapping past 2³². Removing either rule makes the test fail.
+
+Counters: `rx_fifo_lost` (hardware `RF0L` events), `rx_overwritten[queue]` (counted by the reader when it notices a lap), `rx_unrouted` (cannot happen while filters and routes are the same list).
+
+Measured with `renode/stage4_overload.sh` (MCU3, node 1's frames after the overload):
+
+| Overload on MCU3 | Before (one 32-slot ring, drop newest) | Now (4 queues, keep newest) |
+|---|---|---|
+| Main loop busy 1.5–2.0 s | seq 150–159, aged 500 → 410 ms | seq 192–200, aged 80 → 0 ms. Overwritten per queue: heartbeats 7, n1 42, n2 43, n4 43 = `lost` 135 |
+| Same, and node 2 floods 20 frames/ms from 1.6 to 1.9 s | | Node 2's queue gave up 6043; the other queues exactly as above |
+| CPU halted 1.5–2.0 s | Oldest 16 kept (hardware FIFO, blocking) | Same, by choice: `fifo_lost` = 1, `lost` = 149 |
 
 ## Transmit path
 
 `fdcan_send()` checks `TFQF`, writes the element at the put index, then sets the matching `TXBAR` bit (RM p.2480). It never waits.
 
-**Reconnect recovery.** In Renode, frames stay pending after a disconnect and only a new add request restarts them. When the FIFO is full, `fdcan_send()` writes `TXBAR = TXBRP`. Real hardware ignores requests for pending buffers (RM p.2552), so this is harmless there. `TXBCR` is not used, because it left the Renode FIFO stuck.
+**Reconnect recovery.** In Renode, frames stay pending after a disconnect and only a new add request restarts them. When the FIFO is full, `fdcan_send()` writes `TXBAR = TXBRP`. Real hardware ignores requests for pending buffers (RM p.2553, note), so this is harmless there. `TXBCR` is not used, because it left the Renode FIFO stuck.
 
 ## Renode limits
 

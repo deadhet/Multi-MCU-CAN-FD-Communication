@@ -20,6 +20,7 @@ set(COMMON_SOURCES
   ${FW}/common/drivers/board.c
   ${FW}/common/drivers/clock.c
   ${FW}/common/drivers/fdcan.c
+  ${FW}/common/drivers/frame_queue.c
   ${FW}/common/drivers/systick.c
   ${FW}/common/drivers/uart.c
   ${FW}/common/sched/scheduler.c

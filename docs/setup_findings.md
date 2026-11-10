@@ -88,6 +88,7 @@ Commands that do not work as hoped:
 | USART `TXE` is always 1 (from source) | UART output is not paced by baud rate, so the TX overflow policy will not trigger naturally |
 | DWT fixed at 250 MHz in the repl (from source, not tested) | Worst loop time in cycles needs this factor, not the core clock |
 | GPIO `MODER` resets to `0x00000000`, not the chip's `0xABFFFFFF` (port A) or `0xFFFFFFFF` (others) | Pin setup uses read-modify-write, so our fields are right either way. Whole-register reads differ: PD reads `0x0000000A` in Renode, `0xFFFFFFFA` on the chip |
+| Rx FIFO overwrite mode (`F0OM` = 1) is modelled, but `IR.RF0L` is not set when it overwrites (seen 10 Nov 2026; the driver now uses blocking mode) | Only matters if overwrite mode is used again. RM0433 does not say what the chip does |
 
 ### Bit-timing readback
 
