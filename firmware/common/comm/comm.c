@@ -66,6 +66,8 @@ static const struct {
 };
 
 static stream_t streams[COMM_NODE_COUNT][COMM_MSG_COUNT]; /* [sender - 1][message] */
+static uint32_t last_uptime[COMM_NODE_COUNT];             /* From the last accepted heartbeat */
+static uint32_t restarts[COMM_NODE_COUNT];
 static uint32_t tx_seq[COMM_MSG_COUNT];
 static comm_tx_stats_t tx_stats;
 static comm_errors_t errors;
@@ -233,6 +235,19 @@ static bool validate(const can_rx_slot_t *f, comm_frame_t *out)
     stream_t *s = &streams[node - 1U][msg];
     uint32_t seq = get_u32_le(&f->data[BYTE_SEQUENCE]);
     uint32_t lost = 0U;
+    bool restart = false;
+
+    /* §7.3 restart rule: a heartbeat that passed checks 1-6, whose sequence went back, and that
+     * says BOOT or shows a lower uptime comes from a node that restarted. Its sequence counters
+     * started again at 1, so reset both of its streams and accept this heartbeat as its first
+     * frame. The CRC has already been checked, so a corrupted frame cannot trigger this. */
+    if (s->heard && (msg == COMM_MSG_HEARTBEAT) && ((int32_t)(seq - s->last_seq) < 0)
+        && ((f->data[HB_STATE] == (uint8_t)COMM_STATE_BOOT)
+            || (get_u32_le(&f->data[HB_UPTIME]) < last_uptime[node - 1U]))) {
+        comm_forget_peer((uint8_t)node);
+        restarts[node - 1U]++;
+        restart = true;
+    }
 
     if (s->heard) {
         int32_t d = (int32_t)(seq - s->last_seq);
@@ -257,6 +272,7 @@ static bool validate(const can_rx_slot_t *f, comm_frame_t *out)
     out->sequence = seq;
     out->lost_before = lost;
     out->rx_time_ms = f->rx_time_ms;
+    out->restart = restart;
     if (msg == COMM_MSG_PARAM) {
         out->body.param.status = get_u16_le(&f->data[PARAM_STATUS]);
         for (uint32_t i = 0U; i < COMM_PARAMS_PER_NODE; i++) {
@@ -266,6 +282,7 @@ static bool validate(const can_rx_slot_t *f, comm_frame_t *out)
         out->body.heartbeat.state = f->data[HB_STATE];
         out->body.heartbeat.synced_count = f->data[HB_SYNCED];
         out->body.heartbeat.uptime_ms = get_u32_le(&f->data[HB_UPTIME]);
+        last_uptime[node - 1U] = out->body.heartbeat.uptime_ms;
         out->body.heartbeat.error_summary = get_u16_le(&f->data[HB_ERRORS]);
     }
     return true;
@@ -332,6 +349,7 @@ bool comm_get_peer_stats(uint8_t node, comm_peer_stats_t *out)
         out->last_seq[m] = s->last_seq;
         out->heard[m] = s->heard;
     }
+    out->restarts = restarts[node - 1U];
     return true;
 }
 
@@ -348,11 +366,11 @@ static void write_field(const char *name, uint32_t value)
 
 /* Four lines, for example:
  *   MCU2 t=1005 tx p=100 h=10 nq=0/0
- *   MCU2 rx n1 p=100/100 h=10/10 n3 p=100/100 h=10/10 n4 p=100/100 h=10/10
+ *   MCU2 rx n1 p=100/100 h=11/11 r=0 n3 p=100/100 h=11/11 r=0 n4 p=100/100 h=11/11 r=0
  *   MCU2 err id=0 dupnode=0 fmt=0 len=0 ver=0 src=0 crc=0 dup=0 old=0 lost=0 val=0 ovf=0
  *   MCU2 drv fifo_lost=0 ovw=0/0/0/0 unrouted=0 tx_full=0
- * In rx, p=a/b means a frames accepted and b the last sequence seen. In drv, ovw lists the
- * frames each RAM queue gave up: heartbeats, then the peers in node order. */
+ * In rx, p=a/b means a frames accepted and b the last sequence seen; r counts restarts seen.
+ * In drv, ovw lists the frames each RAM queue gave up: heartbeats, then the peers in order. */
 void comm_debug_report(void)
 {
     comm_errors_t e;
@@ -377,6 +395,7 @@ void comm_debug_report(void)
         write_field("/", s[COMM_MSG_PARAM].last_seq);
         write_field(" h=", s[COMM_MSG_HEARTBEAT].accepted);
         write_field("/", s[COMM_MSG_HEARTBEAT].last_seq);
+        write_field(" r=", restarts[n - 1U]);
     }
     write_field("\n" NODE_TAG " err id=", e.bad_id);
     write_field(" dupnode=", e.duplicate_node);

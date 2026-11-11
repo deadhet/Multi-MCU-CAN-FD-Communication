@@ -44,6 +44,7 @@ typedef struct {
     uint32_t sequence;
     uint32_t lost_before; /* Frames missed from this stream just before this one */
     uint32_t rx_time_ms;  /* Arrival time, taken in the FDCAN interrupt */
+    bool restart;         /* Heartbeat that revealed a restart; the sender was reset (§7.3) */
     union {
         comm_param_block_t param;
         comm_heartbeat_t heartbeat;
@@ -70,6 +71,7 @@ typedef struct {
     uint32_t accepted[COMM_MSG_COUNT];
     uint32_t last_seq[COMM_MSG_COUNT];
     bool heard[COMM_MSG_COUNT]; /* false = NEVER_HEARD */
+    uint32_t restarts;          /* Restarts seen in this node's heartbeats (§7.3) */
 } comm_peer_stats_t;
 
 typedef struct {
@@ -85,8 +87,8 @@ bool comm_init(void);
 bool comm_send_param_block(const comm_param_block_t *block);
 bool comm_send_heartbeat(const comm_heartbeat_t *heartbeat);
 
-/* Takes frames from the CAN RX ring until one passes the checks. Returns false when the ring
- * is empty. Call in a loop on every main loop pass. */
+/* Takes frames from the CAN RX queues, heartbeats first, until one passes the checks. Returns
+ * false when all queues are empty. Call in a loop on every main loop pass. */
 bool comm_receive(comm_frame_t *out);
 
 /* Puts both streams from node back to NEVER_HEARD, so its next frame is accepted whatever its

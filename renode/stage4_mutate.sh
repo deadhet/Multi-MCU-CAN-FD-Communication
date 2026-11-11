@@ -2,7 +2,7 @@
 # Stage 4 mutation tests. Copies the source tree to build/mutant/<name>, breaks node 2's
 # frames in one way, builds, runs 4 nodes for 1.1 s, and prints the t=1005 report of every
 # node. The real source tree is never changed.
-#   renode/stage4_mutate.sh <name>   (crc version source length nobrs dup old gap badid)
+#   renode/stage4_mutate.sh <name>   (crc version source length nobrs dup old gap badid fakeboot)
 set -euo pipefail
 
 name="$1"
@@ -35,6 +35,10 @@ p2() { # code to run only on node 2's parameter blocks
     printf '#if NODE_ID == 2 /* MUTANT */\n    if (msg == COMM_MSG_PARAM) { %s }\n#endif\n' "$1"
 }
 
+h2() { # code to run only on node 2's heartbeats
+    printf '#if NODE_ID == 2 /* MUTANT */\n    if (msg == COMM_MSG_HEARTBEAT) { %s }\n#endif\n' "$1"
+}
+
 case "$name" in
 crc)     swap "$comm" "$crc_line" "$crc_line"$'\n'"$(p2 'buf[msg_info[msg].crc_offset] ^= 0x01U;')" ;;
 version) swap "$comm" "$crc_line" "$(p2 'buf[BYTE_VERSION] = 2U;')"$'\n'"$crc_line" ;;
@@ -43,6 +47,7 @@ length)  swap "$comm" "$send_line" "    uint8_t len = msg_info[msg].len;"$'\n'"$
 dup)     swap "$comm" "$seq_line" "$seq_line"$'\n'"$(p2 'seq = 1U;')" ;;
 old)     swap "$comm" "$seq_line" "$seq_line"$'\n'"$(p2 'seq = 1000U - tx_stats.sent[msg];')" ;;
 gap)     swap "$comm" "$seq_line" "$seq_line"$'\n'"$(p2 'seq = 2U * (tx_stats.sent[msg] + 1U);')" ;;
+fakeboot) swap "$comm" "$crc_line" "$crc_line"$'\n'"$(h2 'if ((tx_stats.sent[msg] % 5U) == 4U) { put_u32_le(&buf[BYTE_SEQUENCE], 1U); }')" ;;
 badid)   swap "$comm" "$id_line" "$id_line"$'\n'"$(p2 'id = MAKE_ID(TYPE_PARAM, 5U);')"
          swap "$comm" "$range_line" "$range_line"$'\n#if NODE_ID == 1 /* MUTANT: also accept 0x025-0x02F */\n        { MAKE_ID(TYPE_PARAM, 5U), MAKE_ID(TYPE_PARAM, 15U), QUEUE_HEARTBEAT },\n#endif' ;;
 nobrs)   swap "$fdcan" "$elem_line" $'#if NODE_ID == 2 /* MUTANT */\n    *ram_word(element + 4U) = (dlc << ELEMENT_DLC_POS) | ELEMENT_FDF;\n#else\n'"$elem_line"$'\n#endif' ;;

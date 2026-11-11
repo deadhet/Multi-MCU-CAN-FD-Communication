@@ -22,6 +22,11 @@
 #define REPORT_PERIOD_MS 1000U
 #define REPORT_FIRST_MS  5U
 
+/* §7.3: the first heartbeat goes out at boot, before the first parameter block at 10 ms, so a
+ * restart is announced before its data arrives. One node's frames leave in the order queued (Tx
+ * FIFO mode), whatever their IDs. Start value 0 - 100 makes the first run at 0 ms. */
+#define HEARTBEAT_FIRST_MS 0U
+
 #define TASK_COUNT (sizeof(tasks) / sizeof(tasks[0]))
 
 /* Stage 4 stand-in: values and status come from params/ once it exists. */
@@ -53,7 +58,7 @@ static void report_task(void)
 
 static sched_task_t tasks[] = {
     { param_task, PARAM_PERIOD_MS, 0U },
-    { heartbeat_task, HEARTBEAT_PERIOD_MS, 0U },
+    { heartbeat_task, HEARTBEAT_PERIOD_MS, HEARTBEAT_FIRST_MS - HEARTBEAT_PERIOD_MS },
     { report_task, REPORT_PERIOD_MS, REPORT_FIRST_MS - REPORT_PERIOD_MS },
 };
 
