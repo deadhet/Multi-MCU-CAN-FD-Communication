@@ -31,7 +31,7 @@ Parameter block, 32 bytes:
 | 1 | Source node | `NODE_ID` |
 | 2–3 | Status word | Caller's bits 0–9; bits 10–15 forced to 0 |
 | 4–7 | Sequence | 1, 2, 3 … |
-| 8–27 | Five values, 4 bytes each | From the caller (0 until params/ exists) |
+| 8–27 | Five values, 4 bytes each | From params/ (`params_build_block()`), since Stage 5 |
 | 28–29 | CRC-16 | Over ID + bytes 0–27 |
 | 30–31 | Padding | 0 |
 
@@ -42,7 +42,7 @@ Heartbeat, 16 bytes:
 | 0 | Version | 1 |
 | 1 | Source node | `NODE_ID` |
 | 2 | State | `BOOT` = 0, `RESYNCING` = 1, `OPERATIONAL` = 2 (wire codes chosen here) |
-| 3 | Synced count | From the caller (0 until diag/ exists) |
+| 3 | Synced count | From params/ (`params_synced_count()`), since Stage 5 |
 | 4–7 | Heartbeat sequence | 1, 2, 3 … |
 | 8–11 | Uptime ms | `systick_now_ms()` |
 | 12–13 | Error summary | `comm_error_summary()` |
@@ -60,14 +60,14 @@ Heartbeat, 16 bytes:
 | 5 | Source byte = ID's sender | `bad_source` |
 | 6 | CRC-16 with Data ID | `bad_crc` |
 | 7 | `d = (int32_t)(seq − last)`: 0 → duplicate, < 0 → old, > 1 → count `d − 1` lost and accept | `duplicate`, `old_seq`, `lost_frames` |
-| 8 | Per value (source status, NaN/Inf, range) | `value_rejected`: needs `system_table.c`, not in this stage |
+| 8 | Per value (source status, NaN/Inf, range) | Runs in params/ since Stage 5 and is counted there as `value_rejected` (`docs/params_design.md`) |
 | — | Lost before comm saw it | `rx_overflow` = hardware FIFO overflow events + RAM queue overwrites |
 
 A frame only changes stream state after passing check 7. Rejected frames change nothing.
 
-## Stage 4 stand-ins in the apps
+## Stand-ins in the apps
 
-Until params/ and diag/ exist, the apps send values 0, status 0, state `BOOT` and synced count 0. The main loop drains `comm_receive()` on every pass and discards accepted frames after comm has counted them.
+Until Stage 5 the apps sent values 0, status 0 and synced count 0; now params/ supplies them and takes every accepted parameter block (`docs/params_design.md`). The heartbeat state stays `BOOT` until diag/ exists, and accepted heartbeats are still only counted. The error summary in the heartbeat is now comm's sum plus params/' `value_rejected`, saturating at 65535.
 
 The report task first runs at 5 ms, then every 1000 ms: its start value is `5 − 1000`, so `(now − last) >= 1000` first holds at 5 ms. Reports therefore fall halfway between two 10 ms sends, so no frame is in flight when counters are printed, and sender and receiver counts can be compared exactly.
 
@@ -114,5 +114,5 @@ Node 2's own counters stayed 0 in every case, and the other streams were unaffec
 ## Open items
 
 1. **Restart vs the sequence rule: decided, option B (11 Nov 2026).** See the restart rule above. If the boot heartbeat is lost, the next one (still BOOT, or lower uptime) triggers it; if all are lost, diag/ marks the node OFFLINE and calls `comm_forget_peer()` (≈350 ms). The uptime path is tested once diag/ reports states other than BOOT.
-2. **Stale queued frames after reconnect.** The 4 frames held in the Tx FIFO go out first and carry values from before the disconnect (Stage 0 finding, confirmed here). They pass every check. The freshness rule in params/ will need to account for them.
-3. **Check 8** waits for `system_table.c`.
+2. **Stale queued frames after reconnect: decided, params/ settle rule (Het, 11 Nov 2026).** The 4 frames held in the Tx FIFO go out first and carry values from before the disconnect (Stage 0 finding, confirmed here). They pass every check, so comm/ still accepts them; params/ stores them but keeps the sender's parameters STALE until a block arrives on the 10 ms beat. See `docs/params_design.md`, settle rule. Cancelling them at the sender (`TXBCR`) was not used: it jams Renode's Tx FIFO.
+3. **Check 8: done in params/ (Stage 5).**

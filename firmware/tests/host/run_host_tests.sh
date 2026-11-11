@@ -13,3 +13,11 @@ gcc -std=c11 -Wall -Wextra -Wshadow -Werror -O2 \
     "$repo/firmware/tests/host/test_frame_queue.c" "$repo/firmware/common/drivers/frame_queue.c" \
     -o "$out/test_frame_queue"
 "$out/test_frame_queue"
+
+gcc -std=c11 -Wall -Wextra -Wshadow -Werror -O2 \
+    -I"$repo/firmware/common" \
+    -DNODE_ID=2 \
+    "$repo/firmware/tests/host/test_params.c" "$repo/firmware/common/params/params.c" \
+    "$repo/firmware/common/params/param_source.c" "$repo/firmware/common/system_table.c" \
+    -lm -o "$out/test_params"
+"$out/test_params"

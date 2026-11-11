@@ -1,5 +1,5 @@
-# Stage 4: MCU3 reset at 1.5 s. Its sequence numbers start again at 1, so peers reject them
-# as old until restart detection (diag/, later stage) calls comm_forget_peer().
+# Stage 4: MCU3 reset at 1.5 s. Its sequence numbers start again at 1. Its boot heartbeat
+# triggers the restart rule in comm/ (option B), so peers accept it as a fresh start.
 #   renode --disable-gui --console -e "include @renode/stage4_reset.resc" </dev/null
 include $ORIGIN/system.resc
 emulation RunFor "1.5"

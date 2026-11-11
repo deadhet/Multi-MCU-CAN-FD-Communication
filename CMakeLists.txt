@@ -26,6 +26,9 @@ set(COMMON_SOURCES
   ${FW}/common/sched/scheduler.c
   ${FW}/common/comm/comm.c
   ${FW}/common/comm/crc16.c
+  ${FW}/common/system_table.c
+  ${FW}/common/params/params.c
+  ${FW}/common/params/param_source.c
 )
 
 # Builds one image from the shared source tree.
@@ -45,6 +48,8 @@ function(add_image target id app_source)
     -T${LINKER_SCRIPT} -nostartfiles --specs=nano.specs
     -Wl,--gc-sections -Wl,--fatal-warnings
     -Wl,-Map=$<TARGET_FILE_DIR:${target}>/${target}.map)
+  # libm for sinf() in the simulated sensors (params/param_source.c); pure maths, no syscalls.
+  target_link_libraries(${target} PRIVATE m)
   add_custom_command(TARGET ${target} POST_BUILD
     COMMAND ${ARM_SIZE} $<TARGET_FILE:${target}>)
 endfunction()

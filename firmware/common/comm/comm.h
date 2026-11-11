@@ -63,9 +63,8 @@ typedef struct {
     uint32_t duplicate;      /* Check 7: same sequence again */
     uint32_t old_seq;        /* Check 7: sequence went back */
     uint32_t lost_frames;    /* Check 7: gap, frames still accepted */
-    uint32_t value_rejected; /* Check 8, per value: needs the system table, not counted yet */
     uint32_t rx_overflow;    /* Lost before comm saw them: hardware FIFO events + RAM queue overwrites */
-} comm_errors_t;
+} comm_errors_t;             /* Check 8 is per value and runs in params/, which counts value_rejected */
 
 typedef struct {
     uint32_t accepted[COMM_MSG_COUNT];
@@ -96,7 +95,7 @@ bool comm_receive(comm_frame_t *out);
 void comm_forget_peer(uint8_t node);
 
 void comm_get_errors(comm_errors_t *out);
-uint16_t comm_error_summary(void); /* Saturating sum of all counters, for the heartbeat */
+uint16_t comm_error_summary(void); /* Saturating sum of comm's counters; the app adds params/' */
 bool comm_get_peer_stats(uint8_t node, comm_peer_stats_t *out); /* false for this node or 0/5+ */
 void comm_get_tx_stats(comm_tx_stats_t *out);
 

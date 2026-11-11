@@ -333,8 +333,7 @@ uint16_t comm_error_summary(void)
 
     comm_get_errors(&e);
     sum = (uint64_t)e.bad_id + e.duplicate_node + e.bad_format + e.bad_length + e.bad_version
-        + e.bad_source + e.bad_crc + e.duplicate + e.old_seq + e.lost_frames + e.value_rejected
-        + e.rx_overflow;
+        + e.bad_source + e.bad_crc + e.duplicate + e.old_seq + e.lost_frames + e.rx_overflow;
     return (sum > 0xFFFFU) ? 0xFFFFU : (uint16_t)sum;
 }
 
@@ -367,7 +366,7 @@ static void write_field(const char *name, uint32_t value)
 /* Four lines, for example:
  *   MCU2 t=1005 tx p=100 h=10 nq=0/0
  *   MCU2 rx n1 p=100/100 h=11/11 r=0 n3 p=100/100 h=11/11 r=0 n4 p=100/100 h=11/11 r=0
- *   MCU2 err id=0 dupnode=0 fmt=0 len=0 ver=0 src=0 crc=0 dup=0 old=0 lost=0 val=0 ovf=0
+ *   MCU2 err id=0 dupnode=0 fmt=0 len=0 ver=0 src=0 crc=0 dup=0 old=0 lost=0 ovf=0
  *   MCU2 drv fifo_lost=0 ovw=0/0/0/0 unrouted=0 tx_full=0
  * In rx, p=a/b means a frames accepted and b the last sequence seen; r counts restarts seen.
  * In drv, ovw lists the frames each RAM queue gave up: heartbeats, then the peers in order. */
@@ -407,7 +406,6 @@ void comm_debug_report(void)
     write_field(" dup=", e.duplicate);
     write_field(" old=", e.old_seq);
     write_field(" lost=", e.lost_frames);
-    write_field(" val=", e.value_rejected);
     write_field(" ovf=", e.rx_overflow);
     write_field("\n" NODE_TAG " drv fifo_lost=", drv.rx_fifo_lost);
     write_field(" ovw=", drv.rx_overwritten[0]);

@@ -2,7 +2,7 @@
 # Stage 4 mutation tests. Copies the source tree to build/mutant/<name>, breaks node 2's
 # frames in one way, builds, runs 4 nodes for 1.1 s, and prints the t=1005 report of every
 # node. The real source tree is never changed.
-#   renode/stage4_mutate.sh <name>   (crc version source length nobrs dup old gap badid fakeboot)
+#   renode/stage4_mutate.sh <name>   (crc version source length nobrs dup old gap badid fakeboot values)
 set -euo pipefail
 
 name="$1"
@@ -48,6 +48,9 @@ dup)     swap "$comm" "$seq_line" "$seq_line"$'\n'"$(p2 'seq = 1U;')" ;;
 old)     swap "$comm" "$seq_line" "$seq_line"$'\n'"$(p2 'seq = 1000U - tx_stats.sent[msg];')" ;;
 gap)     swap "$comm" "$seq_line" "$seq_line"$'\n'"$(p2 'seq = 2U * (tx_stats.sent[msg] + 1U);')" ;;
 fakeboot) swap "$comm" "$crc_line" "$crc_line"$'\n'"$(h2 'if ((tx_stats.sent[msg] % 5U) == 4U) { put_u32_le(&buf[BYTE_SEQUENCE], 1U); }')" ;;
+# Check 8, sealed with a good CRC: P6 NaN, P7 SOURCE_FAULT, P8 SOURCE_STALE, P9 reserved status 3,
+# P10 bool 2. Status bits: slot 1 = 2 (0x08), slot 2 = 1 (0x10), slot 3 = 3 (0xC0).
+values)  swap "$comm" "$crc_line" "$(p2 'put_u32_le(&buf[PARAM_VALUES], 0x7FC00000U); buf[PARAM_STATUS] |= 0xD8U; put_u32_le(&buf[PARAM_VALUES + 16U], 2U);')"$'\n'"$crc_line" ;;
 badid)   swap "$comm" "$id_line" "$id_line"$'\n'"$(p2 'id = MAKE_ID(TYPE_PARAM, 5U);')"
          swap "$comm" "$range_line" "$range_line"$'\n#if NODE_ID == 1 /* MUTANT: also accept 0x025-0x02F */\n        { MAKE_ID(TYPE_PARAM, 5U), MAKE_ID(TYPE_PARAM, 15U), QUEUE_HEARTBEAT },\n#endif' ;;
 nobrs)   swap "$fdcan" "$elem_line" $'#if NODE_ID == 2 /* MUTANT */\n    *ram_word(element + 4U) = (dlc << ELEMENT_DLC_POS) | ELEMENT_FDF;\n#else\n'"$elem_line"$'\n#endif' ;;
@@ -68,5 +71,5 @@ timeout 200 renode --disable-gui --console -e "include @$dst/renode/mutant_run.r
 
 echo "##### mutation: $name"
 for n in 1 2 3 4; do
-    grep -A3 ' t=1005 ' "$dst/logs/mcu$n.log" | grep -E ' rx | err '
+    grep -A5 ' t=1005 tx ' "$dst/logs/mcu$n.log" | grep -E ' rx | err | db synced'
 done
