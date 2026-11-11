@@ -1,0 +1,13 @@
+# Scenario S3 (Design Document §9): MCU3 off the bus from 5 s to 15 s, then back, with no
+# restart, 5 s more. Tests OFFLINE on both sides, the sequence reset on OFFLINE, the old frames
+# left in MCU3's Tx FIFO (settle rule, and a first heartbeat that only means RECOVERING), and
+# MCU3's own state while alone (RESYNCING).
+#   renode --disable-gui --console -e "include @renode/s3_disconnect.resc" </dev/null
+include $ORIGIN/system.resc
+emulation RunFor "5.0"
+mach set "mcu3"
+connector Disconnect sysbus.fdcan1 canHub
+emulation RunFor "10.0"
+connector Connect sysbus.fdcan1 canHub
+emulation RunFor "5.0"
+quit

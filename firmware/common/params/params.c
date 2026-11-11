@@ -47,6 +47,7 @@ static params_stats_t stats;
 static uint32_t last_block_ms[COMM_NODE_COUNT];
 static bool block_seen[COMM_NODE_COUNT];
 static bool settling[COMM_NODE_COUNT]; /* Silent sender back, no block on the beat yet */
+static bool owner_offline[COMM_NODE_COUNT]; /* Copied from diag/ by the app */
 
 /* Check 8 on one value. The range check uses the member that matches the type. NaN fails
  * every comparison and is caught by isfinite() anyway. */
@@ -82,6 +83,7 @@ void params_init(void)
         last_block_ms[n] = 0U;
         block_seen[n] = false;
         settling[n] = false;
+        owner_offline[n] = false;
     }
 }
 
@@ -260,6 +262,7 @@ bool params_get(uint8_t id, uint32_t now_ms, param_entry_t *out)
         .validity = e->validity,
         .freshness = e->freshness,
         .source_status = e->source_status,
+        .owner_offline = owner_offline[def->owner - 1U],
     };
     return true;
 }
@@ -274,6 +277,37 @@ uint8_t params_synced_count(void)
         }
     }
     return count;
+}
+
+bool params_node_synced(uint8_t node)
+{
+    if ((node < 1U) || (node > COMM_NODE_COUNT) || (node == NODE_ID)) {
+        return false;
+    }
+    for (uint32_t slot = 0U; slot < PARAMS_PER_NODE; slot++) {
+        const entry_t *e = &db[FIRST_ID(node) - 1U + slot];
+        if ((e->validity != PARAM_VALID) || (e->freshness != PARAM_FRESH)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+/* "MCU1 t=5355 db OWNER_OFFLINE 11 12 13 14 15", or OWNER_ONLINE when the flag clears. */
+void params_set_owner_offline(uint8_t node, bool offline, uint32_t now_ms)
+{
+    if ((node < 1U) || (node > COMM_NODE_COUNT) || (node == NODE_ID) || (owner_offline[node - 1U] == offline)) {
+        return;
+    }
+    owner_offline[node - 1U] = offline;
+    uart_debug_write(NODE_TAG " t=");
+    uart_debug_write_u32(now_ms);
+    uart_debug_write(offline ? " db OWNER_OFFLINE" : " db OWNER_ONLINE");
+    for (uint32_t slot = 0U; slot < PARAMS_PER_NODE; slot++) {
+        uart_debug_write(" ");
+        uart_debug_write_u32(FIRST_ID(node) + slot);
+    }
+    uart_debug_write("\n");
 }
 
 uint32_t params_value_rejected(void)
@@ -293,7 +327,7 @@ static void write_field(const char *name, uint32_t value)
 }
 
 /* Two lines, for example:
- *   MCU2 db synced=20 valid=20 invalid=0 stale=0 never=0 rej=0 gap n1=10/11 n3=10/11 n4=10/11 held n1=0 n3=0 n4=0
+ *   MCU2 db synced=20 valid=20 invalid=0 stale=0 never=0 offline=0 rej=0 gap n1=10/11 n3=10/11 n4=10/11 held n1=0 n3=0 n4=0
  *   MCU2 val 1=0 2=1132068864 ... 20=1
  * gap nX=a/b is the last and the worst arrival gap of node X's blocks in ms; held nX counts
  * node X's blocks that arrived while it was settling after a silence. Values are the raw
@@ -305,18 +339,21 @@ void params_debug_report(void)
     uint32_t invalid = 0U;
     uint32_t stale = 0U;
     uint32_t never = 0U;
+    uint32_t offline = 0U;
 
     for (uint32_t i = 0U; i < PARAM_COUNT; i++) {
         valid += (db[i].validity == PARAM_VALID) ? 1U : 0U;
         invalid += (db[i].validity == PARAM_INVALID) ? 1U : 0U;
         never += (db[i].validity == PARAM_NEVER_RECEIVED) ? 1U : 0U;
         stale += (db[i].freshness == PARAM_STALE) ? 1U : 0U;
+        offline += owner_offline[(i / PARAMS_PER_NODE)] ? 1U : 0U;
     }
     write_field(NODE_TAG " db synced=", params_synced_count());
     write_field(" valid=", valid);
     write_field(" invalid=", invalid);
     write_field(" stale=", stale);
     write_field(" never=", never);
+    write_field(" offline=", offline);
     write_field(" rej=", stats.value_rejected);
     uart_debug_write(" gap");
     for (uint32_t n = 1U; n <= COMM_NODE_COUNT; n++) {

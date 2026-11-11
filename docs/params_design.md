@@ -17,6 +17,7 @@ Covers `firmware/common/system_table.c` and `firmware/common/params/`. Section n
 | FRESH/STALE and VALID/INVALID changes logged, grouped, one line per kind | `log_changes()` | §6.2, §8.6 |
 | Arrival gap per sender (last, worst) | `params_apply_block()` | §6.2 |
 | Synced count (VALID and FRESH, 0–20) for the heartbeat | `params_synced_count()` | §5.3 |
+| Owner-offline flag per parameter, copied from diag/ by the app; per-node "all five synced" for diag/ | `params_set_owner_offline()`, `params_node_synced()` | §7 (Het, 11 Nov 2026) |
 | `value_rejected` counter, added to comm's error summary by the app | `params_value_rejected()` | §5.7 |
 | Simulated sensors: float → sine, int → ramp, bool → toggle, each at its own sample period | `param_source.c` | §6.3 |
 
@@ -89,8 +90,13 @@ While a sender is settling, `params_update_freshness()` keeps its parameters STA
 | `param_task` | 10 ms | `param_source_task(now)` then `params_build_block()` then `comm_send_param_block()`. Sampling and sending are one task with one time value |
 | `freshness_task` | 5 ms | `params_update_freshness(now)` |
 | `heartbeat_task` | 100 ms | `synced_count = params_synced_count()`, `error_summary = comm_error_summary() + params_value_rejected()`, saturating at 65535 |
-| `report_task` | 1 s, at 5 ms offset | `comm_debug_report()`, `params_debug_report()` |
+| `diag_task` | 5 ms | `params_node_synced(node)` for each peer, as diag/'s "data still proper" input; then `params_set_owner_offline(node, diag_peer_offline(node), now)` |
+| `report_task` | 1 s, at 5 ms offset | `comm_debug_report()`, `params_debug_report()`, `diag_debug_report()` |
 | Main loop | Every pass | Accepted parameter blocks from `comm_receive()` go to `params_apply_block(source, block, sequence, rx_time)` |
+
+**Owner-offline flag** (Het, 11 Nov 2026). Each parameter carries `owner_offline`, true while diag/ sees its owner as OFFLINE. The app copies it from diag/; params/ never decides it. Values, validity and freshness are untouched: by the time a node is OFFLINE (≈350 ms) its parameters have been STALE for over 300 ms. A node in NO_HEARTBEAT (heartbeats lost, data still proper) is not flagged. Each change is logged: `MCU1 t=5350 db OWNER_OFFLINE 11 12 13 14 15`, and `OWNER_ONLINE` when its heartbeat returns.
+
+**`params_node_synced(node)`**: true when all five of node's parameters are VALID and FRESH here. diag/ uses it to tell NO_HEARTBEAT from OFFLINE.
 
 Why one task for sampling and sending: as two 10 ms tasks, sensor first, the first Renode run showed MCU3's block at 3000 ms carrying the previous samples. The SysTick moved from 2999 to 3000 ms between the two due checks of one main-loop pass, so the send task ran and the sensor task waited for the next pass.
 
@@ -100,11 +106,11 @@ Two lines after comm's four, once a second, plus change lines from the freshness
 
 ```
 MCU1 t=1525 db STALE 11 12 13 14 15
-MCU1 db synced=20 valid=20 invalid=0 stale=0 never=0 rej=0 gap n2=10/11 n3=10/11 n4=10/11 held n2=0 n3=0 n4=0
+MCU1 db synced=20 valid=20 invalid=0 stale=0 never=0 offline=0 rej=0 gap n2=10/11 n3=10/11 n4=10/11 held n2=0 n3=0 n4=0
 MCU1 val 1=3054676940 2=1130142809 ... 20=1
 ```
 
-`gap nX=a/b` is the last and the worst arrival gap of node X's blocks in ms (1 ms resolution, so 10/11 is normal). `held nX` counts node X's blocks that arrived while it was settling (settle rule). `val` prints the raw 4 bytes of every value as uint32, so floats appear as bit patterns and the logs of different nodes can be compared exactly.
+`offline` counts the parameters with the owner-offline flag. `gap nX=a/b` is the last and the worst arrival gap of node X's blocks in ms (1 ms resolution, so 10/11 is normal). `held nX` counts node X's blocks that arrived while it was settling (settle rule). `val` prints the raw 4 bytes of every value as uint32, so floats appear as bit patterns and the logs of different nodes can be compared exactly.
 
 ## Results (Renode 1.17.0, 100 µs quantum)
 
@@ -138,4 +144,4 @@ MCU1 val 1=3054676940 2=1130142809 ... 20=1
 
 ## Open items
 
-1. **Restart and OFFLINE:** params/ keeps a node's last values when comm/ or diag/ forget it; they age to STALE on their own. Whether OFFLINE should also clear or mark them is a diag/ decision.
+1. **Restart and OFFLINE: decided** (Het, 11 Nov 2026). An OFFLINE node's values are kept (STALE) and marked with the owner-offline flag; see "How the app uses it".

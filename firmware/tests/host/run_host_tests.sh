@@ -21,3 +21,10 @@ gcc -std=c11 -Wall -Wextra -Wshadow -Werror -O2 \
     "$repo/firmware/common/params/param_source.c" "$repo/firmware/common/system_table.c" \
     -lm -o "$out/test_params"
 "$out/test_params"
+
+gcc -std=c11 -Wall -Wextra -Wshadow -Werror -O2 \
+    -I"$repo/firmware/common" \
+    -DNODE_ID=1 \
+    "$repo/firmware/tests/host/test_diag.c" "$repo/firmware/common/diag/diag.c" \
+    -o "$out/test_diag"
+"$out/test_diag"

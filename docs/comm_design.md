@@ -63,11 +63,19 @@ Heartbeat, 16 bytes:
 | 8 | Per value (source status, NaN/Inf, range) | Runs in params/ since Stage 5 and is counted there as `value_rejected` (`docs/params_design.md`) |
 | — | Lost before comm saw it | `rx_overflow` = hardware FIFO overflow events + RAM queue overwrites |
 
-A frame only changes stream state after passing check 7. Rejected frames change nothing.
+A frame only changes stream state after passing check 7. Rejected frames change nothing: for params/ and diag/ they never arrived, so a node whose heartbeats all fail the CRC counts as silent.
+
+**Rejected frames are logged** (Het, 11 Nov 2026), by reason, within §8.6: the first rejection of a reason at once, then at most one line per second per reason with the count since the previous line; the 1 s report flushes the rest. A node sending 100 bad frames a second costs one line a second.
+
+```
+MCU1 t=500 rx rejected crc id=50 n=1
+```
+
+Reason as on the `err` line, `id` = CAN ID of the latest one (decimal; 50 = 0x032, node 2's heartbeat), `n` = rejections since the previous line for that reason.
 
 ## Stand-ins in the apps
 
-Until Stage 5 the apps sent values 0, status 0 and synced count 0; now params/ supplies them and takes every accepted parameter block (`docs/params_design.md`). The heartbeat state stays `BOOT` until diag/ exists, and accepted heartbeats are still only counted. The error summary in the heartbeat is now comm's sum plus params/' `value_rejected`, saturating at 65535.
+Until Stage 5 the apps sent values 0, status 0 and synced count 0; now params/ supplies them and takes every accepted parameter block (`docs/params_design.md`). Since the diag/ stage the heartbeat carries the node's real state (BOOT, RESYNCING, OPERATIONAL) and accepted heartbeats go to diag/ (`docs/diag_design.md`). The error summary in the heartbeat is comm's sum plus params/' `value_rejected`, saturating at 65535.
 
 The report task first runs at 5 ms, then every 1000 ms: its start value is `5 − 1000`, so `(now − last) >= 1000` first holds at 5 ms. Reports therefore fall halfway between two 10 ms sends, so no frame is in flight when counters are printed, and sender and receiver counts can be compared exactly.
 

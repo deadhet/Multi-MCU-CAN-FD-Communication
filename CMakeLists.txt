@@ -26,6 +26,7 @@ set(COMMON_SOURCES
   ${FW}/common/sched/scheduler.c
   ${FW}/common/comm/comm.c
   ${FW}/common/comm/crc16.c
+  ${FW}/common/diag/diag.c
   ${FW}/common/system_table.c
   ${FW}/common/params/params.c
   ${FW}/common/params/param_source.c

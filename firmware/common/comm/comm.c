@@ -72,6 +72,46 @@ static uint32_t tx_seq[COMM_MSG_COUNT];
 static comm_tx_stats_t tx_stats;
 static comm_errors_t errors;
 
+/* Rejected frames are logged by reason (Het, 11 Nov 2026), within §8.6: the first one of a
+ * reason at once, then at most one line per second with the count since the last line, so a
+ * node sending 100 bad frames a second costs one line a second. The report flushes the rest. */
+#define REJECT_LOG_PERIOD_MS 1000U
+
+typedef enum {
+    REJECT_ID,
+    REJECT_DUPNODE,
+    REJECT_FORMAT,
+    REJECT_LENGTH,
+    REJECT_VERSION,
+    REJECT_SOURCE,
+    REJECT_CRC,
+    REJECT_DUPLICATE,
+    REJECT_OLD,
+    REJECT_COUNT
+} reject_t;
+
+static const struct {
+    const char *name; /* As on the err line */
+    uint32_t *counter;
+} reject_info[REJECT_COUNT] = {
+    [REJECT_ID] = { "id", &errors.bad_id },
+    [REJECT_DUPNODE] = { "dupnode", &errors.duplicate_node },
+    [REJECT_FORMAT] = { "fmt", &errors.bad_format },
+    [REJECT_LENGTH] = { "len", &errors.bad_length },
+    [REJECT_VERSION] = { "ver", &errors.bad_version },
+    [REJECT_SOURCE] = { "src", &errors.bad_source },
+    [REJECT_CRC] = { "crc", &errors.bad_crc },
+    [REJECT_DUPLICATE] = { "dup", &errors.duplicate },
+    [REJECT_OLD] = { "old", &errors.old_seq },
+};
+
+static struct {
+    uint32_t unlogged; /* Rejections not yet in a log line */
+    uint32_t last_id;  /* CAN ID of the latest one */
+    uint32_t last_log_ms;
+    bool logged;       /* A line was printed for this reason at least once */
+} reject_log[REJECT_COUNT];
+
 /* §5.3: every field is written explicitly, little-endian. */
 static void put_u16_le(uint8_t *p, uint16_t v)
 {
@@ -174,6 +214,37 @@ bool comm_send_heartbeat(const comm_heartbeat_t *heartbeat)
     return send_frame(COMM_MSG_HEARTBEAT, buf);
 }
 
+/* "MCU1 t=503 rx rejected crc id=50 n=1": reason, CAN ID (decimal) of the latest one, and how
+ * many were rejected for this reason since the last line. */
+static void log_rejects(reject_t why, uint32_t now_ms)
+{
+    uart_debug_write(NODE_TAG " t=");
+    uart_debug_write_u32(now_ms);
+    uart_debug_write(" rx rejected ");
+    uart_debug_write(reject_info[why].name);
+    uart_debug_write(" id=");
+    uart_debug_write_u32(reject_log[why].last_id);
+    uart_debug_write(" n=");
+    uart_debug_write_u32(reject_log[why].unlogged);
+    uart_debug_write("\n");
+    reject_log[why].unlogged = 0U;
+    reject_log[why].last_log_ms = now_ms;
+    reject_log[why].logged = true;
+}
+
+/* Counts a rejected frame and logs it (rate limited, see REJECT_LOG_PERIOD_MS). A rejected
+ * frame changes nothing else: for diag/ and params/ it never arrived. */
+static bool reject(reject_t why, const can_rx_slot_t *f)
+{
+    (*reject_info[why].counter)++;
+    reject_log[why].unlogged++;
+    reject_log[why].last_id = f->id;
+    if (!reject_log[why].logged || ((f->rx_time_ms - reject_log[why].last_log_ms) >= REJECT_LOG_PERIOD_MS)) {
+        log_rejects(why, f->rx_time_ms);
+    }
+    return false;
+}
+
 /* §5.7, checks 1-7, cheapest first, stopping at the first failure. Works on the local copy that
  * is then decoded (§5.5). Only an accepted frame changes the stream state. */
 static bool validate(const can_rx_slot_t *f, comm_frame_t *out)
@@ -188,47 +259,39 @@ static bool validate(const can_rx_slot_t *f, comm_frame_t *out)
     } else if (type == TYPE_HEARTBEAT) {
         msg = COMM_MSG_HEARTBEAT;
     } else {
-        errors.bad_id++;
-        return false;
+        return reject(REJECT_ID, f);
     }
     if ((node < 1U) || (node > COMM_NODE_COUNT)) {
-        errors.bad_id++;
-        return false;
+        return reject(REJECT_ID, f);
     }
     if (node == NODE_ID) {
-        errors.duplicate_node++;
-        return false;
+        return reject(REJECT_DUPNODE, f);
     }
 
     /* Check 2: CAN FD with bitrate switching. */
     if ((f->flags & (CAN_RX_FLAG_FD | CAN_RX_FLAG_BRS)) != (CAN_RX_FLAG_FD | CAN_RX_FLAG_BRS)) {
-        errors.bad_format++;
-        return false;
+        return reject(REJECT_FORMAT, f);
     }
 
     /* Check 3: length before CRC, because the CRC position depends on it. */
     if (f->len != msg_info[msg].len) {
-        errors.bad_length++;
-        return false;
+        return reject(REJECT_LENGTH, f);
     }
 
     /* Check 4. */
     if (f->data[BYTE_VERSION] != COMM_PROTOCOL_VERSION) {
-        errors.bad_version++;
-        return false;
+        return reject(REJECT_VERSION, f);
     }
 
     /* Check 5. */
     if (f->data[BYTE_SOURCE] != node) {
-        errors.bad_source++;
-        return false;
+        return reject(REJECT_SOURCE, f);
     }
 
     /* Check 6: CRC before sequence, so a corrupted sequence never becomes the last-seen value. */
     uint32_t crc_offset = msg_info[msg].crc_offset;
     if (get_u16_le(&f->data[crc_offset]) != frame_crc(f->id, f->data, crc_offset)) {
-        errors.bad_crc++;
-        return false;
+        return reject(REJECT_CRC, f);
     }
 
     /* Check 7 (§5.6): d = seq - last. A NEVER_HEARD stream accepts its first frame. */
@@ -252,12 +315,10 @@ static bool validate(const can_rx_slot_t *f, comm_frame_t *out)
     if (s->heard) {
         int32_t d = (int32_t)(seq - s->last_seq);
         if (d == 0) {
-            errors.duplicate++;
-            return false;
+            return reject(REJECT_DUPLICATE, f);
         }
         if (d < 0) {
-            errors.old_seq++;
-            return false;
+            return reject(REJECT_OLD, f);
         }
         lost = (uint32_t)d - 1U;
         errors.lost_frames += lost;
@@ -369,7 +430,8 @@ static void write_field(const char *name, uint32_t value)
  *   MCU2 err id=0 dupnode=0 fmt=0 len=0 ver=0 src=0 crc=0 dup=0 old=0 lost=0 ovf=0
  *   MCU2 drv fifo_lost=0 ovw=0/0/0/0 unrouted=0 tx_full=0
  * In rx, p=a/b means a frames accepted and b the last sequence seen; r counts restarts seen.
- * In drv, ovw lists the frames each RAM queue gave up: heartbeats, then the peers in order. */
+ * In drv, ovw lists the frames each RAM queue gave up: heartbeats, then the peers in order.
+ * Then an "rx rejected" line for every reason with rejections not yet logged. */
 void comm_debug_report(void)
 {
     comm_errors_t e;
@@ -415,4 +477,11 @@ void comm_debug_report(void)
     write_field(" unrouted=", drv.rx_unrouted);
     write_field(" tx_full=", drv.tx_fifo_full);
     uart_debug_write("\n");
+
+    /* Rejections still waiting for their line. */
+    for (uint32_t why = 0U; why < (uint32_t)REJECT_COUNT; why++) {
+        if (reject_log[why].unlogged > 0U) {
+            log_rejects((reject_t)why, systick_now_ms());
+        }
+    }
 }

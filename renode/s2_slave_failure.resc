@@ -1,0 +1,14 @@
+# Scenario S2 (Design Document §9): MCU3's CPU halted at 5 s, MCU3 reset at 10 s, 5 s more.
+# Assignment scenarios 2-7: a slave stops, the others keep exchanging, the master detects it,
+# the slave restarts, re-establishes communication, and its parameters are synchronised again.
+#   renode --disable-gui --console -e "include @renode/s2_slave_failure.resc" </dev/null
+include $ORIGIN/system.resc
+emulation RunFor "5.0"
+mach set "mcu3"
+sysbus.cpu IsHalted true
+emulation RunFor "5.0"
+mach set "mcu3"
+machine Reset
+sysbus.cpu IsHalted false
+emulation RunFor "5.0"
+quit

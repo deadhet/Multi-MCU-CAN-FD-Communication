@@ -221,6 +221,39 @@ static void test_settle(void)
     CHECK(s.held[0] == 5U);
 }
 
+static void test_owner_offline(void)
+{
+    printf("owner offline flag, node synced (for diag/)\n");
+    params_init();
+    comm_param_block_t b = block1();
+
+    CHECK(!params_node_synced(1U));
+    params_apply_block(1U, &b, 1U, 100U);
+    params_update_freshness(100U);
+    CHECK(params_node_synced(1U));
+    CHECK(!params_node_synced(2U) && !params_node_synced(0U) && !params_node_synced(5U));
+    CHECK(!get(1U, 100U).owner_offline);
+
+    log_clear();
+    params_set_owner_offline(1U, true, 120U);
+    CHECK(get(1U, 120U).owner_offline && get(5U, 120U).owner_offline);
+    CHECK(!get(6U, 120U).owner_offline && !get(11U, 120U).owner_offline);
+    CHECK(logged("MCU2 t=120 db OWNER_OFFLINE 1 2 3 4 5\n"));
+    CHECK(get(1U, 120U).validity == PARAM_VALID && get(1U, 120U).value.f == 1.5f); /* Kept */
+
+    log_clear();
+    params_set_owner_offline(1U, true, 125U); /* No change, no line */
+    params_set_owner_offline(2U, true, 125U); /* This node: ignored */
+    params_set_owner_offline(5U, true, 125U);
+    CHECK(log_buf[0] == '\0' && !get(6U, 125U).owner_offline);
+    params_set_owner_offline(1U, false, 130U);
+    CHECK(!get(1U, 130U).owner_offline);
+    CHECK(logged("MCU2 t=130 db OWNER_ONLINE 1 2 3 4 5\n"));
+
+    params_update_freshness(131U); /* Age 31: stale, so no longer synced */
+    CHECK(!params_node_synced(1U));
+}
+
 static void test_ignored_blocks(void)
 {
     printf("own and unknown senders ignored\n");
@@ -388,6 +421,7 @@ int main(void)
     test_init();
     test_receive_and_transport_stale();
     test_settle();
+    test_owner_offline();
     test_ignored_blocks();
     test_check8();
     test_local();

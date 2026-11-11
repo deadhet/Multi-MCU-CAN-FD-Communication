@@ -41,6 +41,7 @@ typedef struct {
     param_validity_t validity;
     param_freshness_t freshness;
     uint8_t source_status; /* param_source_status_t as last sent or received */
+    bool owner_offline;    /* Its owner node is OFFLINE (set by the app from diag/) */
 } param_entry_t;
 
 typedef struct {
@@ -77,6 +78,16 @@ void params_update_freshness(uint32_t now_ms);
 bool params_get(uint8_t id, uint32_t now_ms, param_entry_t *out);
 
 uint8_t params_synced_count(void); /* Parameters that are VALID and FRESH, 0-20 */
+
+/* True when all five parameters of node (1-4, not this node) are VALID and FRESH here. diag/
+ * uses it to tell a node whose heartbeats stopped but whose data still arrives (NO_HEARTBEAT)
+ * from one that is OFFLINE. */
+bool params_node_synced(uint8_t node);
+
+/* Flags node's five parameters as "owner OFFLINE" (Het, 11 Nov 2026). The app copies diag/'s
+ * view here; params/ itself never decides it. Their values, validity and freshness are kept.
+ * Each change is logged. Ignored for this node and for 0/5+. */
+void params_set_owner_offline(uint8_t node, bool offline, uint32_t now_ms);
 uint32_t params_value_rejected(void);
 void params_get_stats(params_stats_t *out);
 
