@@ -97,6 +97,27 @@ def parse_frame(encoded: bytes) -> Frame:
     return Frame(version, frame_type, sequence, message, len(encoded) + 1)
 
 
+def cobs_encode(data: bytes) -> bytes:
+    """As monitor/cobs.c, without the terminator. For tests and tools that play MCU1."""
+    out, block = bytearray(), bytearray()
+    for byte in data:
+        if byte == 0:
+            out += bytes([len(block) + 1]) + block
+            block = bytearray()
+        else:
+            block.append(byte)
+            if len(block) == 254:
+                out += b"\xff" + block
+                block = bytearray()
+    return bytes(out + bytes([len(block) + 1]) + block)
+
+
+def encode_frame(frame_type: int, sequence: int, message: Message) -> bytes:
+    """A complete frame as MCU1 sends it, terminator included: header, sequence, payload, CRC, COBS."""
+    body = bytes([(PROTOCOL_VERSION << 4) | frame_type]) + sequence.to_bytes(4, "little") + message.SerializeToString()
+    return cobs_encode(body + crc16(body).to_bytes(2, "little")) + b"\x00"
+
+
 def split_frames(buffer: bytes) -> tuple[list[bytes], bytes]:
     """Splits a byte stream at 0x00. Returns the complete frames and the unfinished rest."""
     *frames, rest = buffer.split(b"\x00")

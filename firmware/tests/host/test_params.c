@@ -48,6 +48,103 @@ static int logged(const char *text)
     return strstr(log_buf, text) != NULL;
 }
 
+/* Change count (events option b, Het 13 Nov 2026). After every params/ call that can change
+ * something in every test below, params_change_count() must have moved if and only if a
+ * parameter's validity, freshness or owner-offline flag changed: those are the changes the
+ * UART link sends as events, and one the count misses would never be sent. */
+typedef struct {
+    param_validity_t validity[PARAM_COUNT];
+    param_freshness_t freshness[PARAM_COUNT];
+    bool owner_offline[PARAM_COUNT];
+} reported_t;
+
+static reported_t last_reported;
+static uint32_t last_count;
+static uint32_t count_checks;
+
+static reported_t reported_now(void)
+{
+    reported_t r;
+    memset(&r, 0, sizeof(r));
+    for (uint8_t id = 1U; id <= PARAM_COUNT; id++) {
+        param_entry_t e;
+        (void)params_get(id, 0U, &e);
+        r.validity[id - 1U] = e.validity;
+        r.freshness[id - 1U] = e.freshness;
+        r.owner_offline[id - 1U] = e.owner_offline;
+    }
+    return r;
+}
+
+static void check_count(int line)
+{
+    reported_t now = reported_now();
+    bool changed = false;
+    for (uint32_t i = 0U; i < PARAM_COUNT; i++) {
+        changed = changed || (now.validity[i] != last_reported.validity[i])
+                  || (now.freshness[i] != last_reported.freshness[i])
+                  || (now.owner_offline[i] != last_reported.owner_offline[i]);
+    }
+    uint32_t count = params_change_count();
+    if (changed != (count != last_count)) {
+        printf("  FAIL line %d: %s, change count %s\n", line, changed ? "state changed" : "nothing changed",
+               (count != last_count) ? "moved" : "did not move");
+        failures++;
+    }
+    last_reported = now;
+    last_count = count;
+    count_checks++;
+}
+
+static void watched_init(int line)
+{
+    params_init();
+    if (params_change_count() != 0U) {
+        printf("  FAIL line %d: change count not 0 after params_init()\n", line);
+        failures++;
+    }
+    last_reported = reported_now();
+    last_count = 0U;
+}
+
+static bool watched_set_local(uint8_t id, param_value_t value, uint32_t now, int line)
+{
+    bool ok = params_set_local(id, value, now);
+    check_count(line);
+    return ok;
+}
+
+static void watched_apply(uint8_t node, const comm_param_block_t *b, uint32_t seq, uint32_t t, int line)
+{
+    params_apply_block(node, b, seq, t);
+    check_count(line);
+}
+
+static void watched_freshness(uint32_t now, int line)
+{
+    params_update_freshness(now);
+    check_count(line);
+}
+
+static void watched_owner_offline(uint8_t node, bool offline, uint32_t now, int line)
+{
+    params_set_owner_offline(node, offline, now);
+    check_count(line);
+}
+
+static void watched_source(uint32_t now, int line)
+{
+    param_source_task(now); /* Samples through params_set_local() */
+    check_count(line);
+}
+
+#define params_init()                         watched_init(__LINE__)
+#define params_set_local(id, v, now)          watched_set_local((id), (v), (now), __LINE__)
+#define params_apply_block(n, b, seq, t)      watched_apply((n), (b), (seq), (t), __LINE__)
+#define params_update_freshness(now)          watched_freshness((now), __LINE__)
+#define params_set_owner_offline(n, off, now) watched_owner_offline((n), (off), (now), __LINE__)
+#define param_source_task(now)                watched_source((now), __LINE__)
+
 static param_entry_t get(uint8_t id, uint32_t now)
 {
     param_entry_t e;
@@ -427,6 +524,7 @@ int main(void)
     test_local();
     test_gaps_and_wrap();
     test_source();
+    printf("change count checked after %u params/ calls\n", (unsigned)count_checks);
     printf("%s (%d failures)\n", (failures == 0) ? "PARAMS PASS" : "PARAMS FAIL", failures);
     return (failures == 0) ? 0 : 1;
 }

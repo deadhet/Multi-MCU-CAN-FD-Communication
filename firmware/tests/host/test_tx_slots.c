@@ -140,6 +140,8 @@ static void test_queue(void)
         tx_slots_done();
     }
     CHECK(!tx_slots_next(&d, &len));
+    tx_slots_get_stats(&st);
+    CHECK(st.queue_peak == 3U); /* Events 1, 2 and 4 waiting together */
 
     /* Full: 16 entries, the one on its way out included. */
     CHECK(write_event(10U));
@@ -159,6 +161,7 @@ static void test_queue(void)
     }
     tx_slots_get_stats(&st);
     CHECK(st.queued == 20U && st.queue_full == 1U); /* 1, 2, 4; 10-25; 100 */
+    CHECK(st.queue_peak == TX_QUEUE_ENTRIES);
 }
 
 /* Random steps. Rules checked:
@@ -254,6 +257,8 @@ static void test_random(void)
         CHECK(st.handed[k] == sent_per_kind[k] + st.replaced[k]); /* rule 5 (nothing pending now) */
     }
     CHECK(st.queued == events_sent && st.queue_full == refused);  /* rule 5 */
+    CHECK((refused == 0U) || (st.queue_peak == TX_QUEUE_ENTRIES)); /* Refused only when full */
+    CHECK(st.queue_peak <= TX_QUEUE_ENTRIES);
     printf("  %u frames and events made, %u sent, %u replaced, %u events, %u refused (queue full)\n",
            (unsigned)number, (unsigned)st.sent, (unsigned)(st.replaced[0] + st.replaced[1]),
            (unsigned)events_sent, (unsigned)refused);

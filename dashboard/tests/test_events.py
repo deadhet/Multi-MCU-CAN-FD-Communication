@@ -58,16 +58,16 @@ def test_a_missing_event_is_found():
     assert "P11 fresh is False, events say True" in problems[0]
 
 
-def test_event_up_to_5_ms_after_a_late_snapshot_is_accepted():
+def test_the_events_before_a_snapshot_must_explain_it():
+    """MCU1 looks once more before every snapshot, so the event comes first, even in the same ms."""
     frames = [
         snap(1, 3000),
-        snap(2, 3101, links={3: pb.OFFLINE}),     # its task ran 1 ms late, after the change
-        link_event(3, 3105, 0b100, pb.OFFLINE),   # the event from the next 5 ms run
-        snap(4, 3200, links={3: pb.OFFLINE}),
+        link_event(2, 3101, 0b100, pb.OFFLINE),
+        snap(3, 3101, links={3: pb.OFFLINE}),
     ]
-    assert replay_check(frames) == (2, [])
-    late = frames[:2] + [link_event(3, 3107, 0b100, pb.OFFLINE)]  # more than 5 ms: a difference
-    assert replay_check(late)[1] != []
+    assert replay_check(frames) == (1, [])
+    after = [frames[0], frames[2], frames[1]]  # the event after its snapshot: no allowance any more
+    assert replay_check(after)[1] == ["snapshot t=3101: n3 is 3, events say 1"]
 
 
 def test_no_check_across_skipped_frames_or_a_restart():
@@ -80,20 +80,19 @@ def test_no_check_across_skipped_frames_or_a_restart():
 def test_events_against_the_log():
     logged = [(5051, ("link", 3, "LATE")), (5251, ("link", 3, "OFFLINE")),
               (5251, ("owner", "OFFLINE", 11)), (90, ("link", 2, "ONLINE"))]
-    sent = [(5055, ("link", 3, "LATE")), (5251, ("link", 3, "OFFLINE")), (5251, ("owner", "OFFLINE", 11))]
-    assert match_changes(logged, sent, start=100, end=9000) == ([], [])  # t=90: before the capture began
-    late = [(5062, ("link", 3, "LATE"))] + sent[1:]
-    assert len(match_changes(logged, late, start=100, end=9000)[0]) == 2  # missed, and unexplained
+    sent = [(5053, ("link", 3, "LATE")), (5251, ("link", 3, "OFFLINE")), (5251, ("owner", "OFFLINE", 11))]
+    assert match_changes(logged, sent, start=100, end=9000) == ([], 2)  # t=90: before the capture began
+    late = [(5054, ("link", 3, "LATE"))] + sent[1:]
+    assert len(match_changes(logged, late, start=100, end=9000)[0]) == 2  # 3 ms: missed, and unexplained
     extra = sent + [(6000, ("restart", 3))]
     assert match_changes(logged, extra, start=100, end=9000)[0] == ["event at t=6000, not in the log: ('restart', 3)"]
 
 
-def test_a_state_shorter_than_one_look_is_skipped_by_design():
-    """MCU1 at boot: RESYNCING at 100 (heartbeats, after that pass's look), OPERATIONAL at 105
-    (diag task, before the look): the look at 105 sees only OPERATIONAL."""
+def test_a_short_state_must_have_its_event():
+    """S2, before events option b: MCU1 RESYNCING from 100 to 105 at boot, between two 5 ms looks.
+    Now every change has its event, however short."""
     logged = [(100, ("own", "RESYNCING")), (105, ("own", "OPERATIONAL"))]
     sent = [(105, ("own", "OPERATIONAL"))]
-    problems, skipped = match_changes(logged, sent, start=0, end=9000)
-    assert problems == [] and len(skipped) == 1 and "RESYNCING" in skipped[0]
-    lasted_longer = [(100, ("own", "RESYNCING")), (106, ("own", "OPERATIONAL"))]
-    assert match_changes(lasted_longer, sent, start=0, end=9000)[0] != []  # 6 ms: must be reported
+    assert match_changes(logged, sent, start=0, end=9000) == (["logged at t=100, no event: ('own', 'RESYNCING')"], 0)
+    both = [(100, ("own", "RESYNCING"))] + sent
+    assert match_changes(logged, both, start=0, end=9000) == ([], 0)

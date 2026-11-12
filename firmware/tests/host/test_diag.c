@@ -44,6 +44,85 @@ static int logged(const char *text)
     return strstr(log_buf, text) != NULL;
 }
 
+/* Change count (events option b, Het 13 Nov 2026). After every diag/ call in every test below,
+ * diag_change_count() must have moved if and only if something the UART link reports changed:
+ * a peer's link state or restart count, or the own state. A change it misses would never be
+ * sent as an event, so each transition these tests drive also checks its count. */
+typedef struct {
+    diag_link_t link[COMM_NODE_COUNT];
+    uint32_t restarts[COMM_NODE_COUNT];
+    comm_node_state_t own;
+} reported_t;
+
+static reported_t last_reported;
+static uint32_t last_count;
+static uint32_t count_checks;
+
+static reported_t reported_now(void)
+{
+    reported_t r = { .own = diag_own_state() };
+    for (uint8_t node = 1U; node <= COMM_NODE_COUNT; node++) {
+        diag_peer_t p = { 0 };
+        (void)diag_get_peer(node, 0U, &p); /* Zeros for this node */
+        r.link[node - 1U] = p.link;
+        r.restarts[node - 1U] = p.restarts;
+    }
+    return r;
+}
+
+static void check_count(int line)
+{
+    reported_t now = reported_now();
+    bool changed = now.own != last_reported.own;
+    for (uint32_t n = 0U; n < COMM_NODE_COUNT; n++) {
+        changed = changed || (now.link[n] != last_reported.link[n]) || (now.restarts[n] != last_reported.restarts[n]);
+    }
+    uint32_t count = diag_change_count();
+    if (changed != (count != last_count)) {
+        printf("  FAIL line %d: %s, change count %s\n", line, changed ? "state changed" : "nothing changed",
+               (count != last_count) ? "moved" : "did not move");
+        failures++;
+    }
+    last_reported = now;
+    last_count = count;
+    count_checks++;
+}
+
+static void watched_init(int line)
+{
+    diag_init();
+    if (diag_change_count() != 0U) {
+        printf("  FAIL line %d: change count not 0 after diag_init()\n", line);
+        failures++;
+    }
+    last_reported = reported_now();
+    last_count = 0U;
+}
+
+static void watched_heartbeat(uint8_t node, const comm_heartbeat_t *h, bool restart, uint32_t t, int line)
+{
+    diag_on_heartbeat(node, h, restart, t);
+    check_count(line);
+}
+
+static void watched_block(uint8_t node, uint32_t t, int line)
+{
+    diag_on_param_block(node, t);
+    check_count(line);
+}
+
+static uint8_t watched_update(uint32_t now, const bool data_ok[COMM_NODE_COUNT], int line)
+{
+    uint8_t went_offline = diag_update(now, data_ok);
+    check_count(line);
+    return went_offline;
+}
+
+#define diag_init()                       watched_init(__LINE__)
+#define diag_on_heartbeat(n, h, r, t)     watched_heartbeat((n), (h), (r), (t), __LINE__)
+#define diag_on_param_block(n, t)         watched_block((n), (t), __LINE__)
+#define diag_update(now, data_ok)         watched_update((now), (data_ok), __LINE__)
+
 static const bool no_data[COMM_NODE_COUNT] = { false, false, false, false };
 
 static void hb(uint8_t node, comm_node_state_t state, uint32_t uptime, uint32_t t)
@@ -474,6 +553,7 @@ int main(void)
     test_data_invalid();
     test_own_state_alone();
     test_wrap_and_report();
+    printf("change count checked after %u diag/ calls\n", (unsigned)count_checks);
     printf("%s (%d failures)\n", (failures == 0) ? "DIAG PASS" : "DIAG FAIL", failures);
     return (failures == 0) ? 0 : 1;
 }

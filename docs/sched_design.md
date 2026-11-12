@@ -9,6 +9,8 @@ A cooperative, time-triggered task table (a "super-loop"). Every pass of `main()
 2. `sched_run_due()`: walks the table in order. For each task it reads the ms clock, and if `now - last_run >= period` it sets `last_run = now` and runs the task to the end.
 3. The app drains the CAN receive queues.
 
+MCU1 also looks for UART-link events outside the table (Het, 13 Nov 2026: events option b): after step 2 and after each CAN frame in step 3, only when diag/'s or params/'s change count moved, and before every snapshot. It replaced a 5 ms `event` task, which missed states shorter than 5 ms. Its time is inside `pass`.
+
 Tasks never interrupt each other; only interrupts do (FDCAN, then SysTick, then the UARTs). So every task must be short and must never wait. Table order decides who goes first when several are due in the same pass. The report runs before the snapshot on MCU1, so both show the same values.
 
 | Node | Tasks (period, first run) |

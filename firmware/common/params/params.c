@@ -48,6 +48,25 @@ static uint32_t last_block_ms[COMM_NODE_COUNT];
 static bool block_seen[COMM_NODE_COUNT];
 static bool settling[COMM_NODE_COUNT]; /* Silent sender back, no block on the beat yet */
 static bool owner_offline[COMM_NODE_COUNT]; /* Copied from diag/ by the app */
+static uint32_t changes; /* params_change_count(): validity, freshness or owner flag changed */
+
+/* After params_init(), validity and freshness change only through these two, so every change
+ * is counted for params_change_count(). */
+static void set_validity(entry_t *e, param_validity_t validity)
+{
+    if (e->validity != validity) {
+        e->validity = validity;
+        changes++;
+    }
+}
+
+static void set_freshness(entry_t *e, param_freshness_t freshness)
+{
+    if (e->freshness != freshness) {
+        e->freshness = freshness;
+        changes++;
+    }
+}
 
 /* Check 8 on one value. The range check uses the member that matches the type. NaN fails
  * every comparison and is caught by isfinite() anyway. */
@@ -85,6 +104,7 @@ void params_init(void)
         settling[n] = false;
         owner_offline[n] = false;
     }
+    changes = 0U;
 }
 
 bool params_set_local(uint8_t id, param_value_t value, uint32_t now_ms)
@@ -99,10 +119,10 @@ bool params_set_local(uint8_t id, param_value_t value, uint32_t now_ms)
 
     if (ok) {
         e->value = value;
-        e->validity = PARAM_VALID;
+        set_validity(e, PARAM_VALID);
         e->source_status = (uint8_t)PARAM_SOURCE_OK;
     } else {
-        e->validity = PARAM_INVALID; /* Old value kept, flagged */
+        set_validity(e, PARAM_INVALID); /* Old value kept, flagged */
         e->source_status = (uint8_t)PARAM_SOURCE_FAULT;
     }
     /* A sample was taken either way, so the timestamp moves on (Het, 11 Nov 2026). */
@@ -162,13 +182,13 @@ void params_apply_block(uint8_t node, const comm_param_block_t *block, uint32_t 
         /* Check 8. SOURCE_FAULT is the owner's own report, not a transport error, so it makes
          * the value INVALID without counting. The reserved code and a bad value are counted. */
         if (status == (uint8_t)PARAM_SOURCE_FAULT) {
-            e->validity = PARAM_INVALID;
+            set_validity(e, PARAM_INVALID);
         } else if ((status > (uint8_t)PARAM_SOURCE_FAULT) || !value_ok(def, v)) {
-            e->validity = PARAM_INVALID;
+            set_validity(e, PARAM_INVALID);
             stats.value_rejected++;
         } else {
             e->value = v;
-            e->validity = PARAM_VALID;
+            set_validity(e, PARAM_VALID);
         }
         /* An INVALID value keeps the old content, but the timestamp and sequence still move on,
          * because the frame did arrive (Het, 11 Nov 2026). */
@@ -234,7 +254,7 @@ void params_update_freshness(uint32_t now_ms)
             stale = (age > TRANSPORT_STALE_MS) || (e->source_status == (uint8_t)PARAM_SOURCE_STALE)
                     || settling[def->owner - 1U];
         }
-        e->freshness = stale ? PARAM_STALE : PARAM_FRESH;
+        set_freshness(e, stale ? PARAM_STALE : PARAM_FRESH);
     }
 
     log_changes(now_ms, "VALID", false, (uint32_t)PARAM_VALID);
@@ -300,6 +320,7 @@ void params_set_owner_offline(uint8_t node, bool offline, uint32_t now_ms)
         return;
     }
     owner_offline[node - 1U] = offline;
+    changes++;
     uart_debug_write(NODE_TAG " t=");
     uart_debug_write_u32(now_ms);
     uart_debug_write(offline ? " db OWNER_OFFLINE" : " db OWNER_ONLINE");
@@ -313,6 +334,11 @@ void params_set_owner_offline(uint8_t node, bool offline, uint32_t now_ms)
 uint32_t params_value_rejected(void)
 {
     return stats.value_rejected;
+}
+
+uint32_t params_change_count(void)
+{
+    return changes;
 }
 
 void params_get_stats(params_stats_t *out)

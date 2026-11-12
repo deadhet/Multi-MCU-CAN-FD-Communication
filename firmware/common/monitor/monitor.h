@@ -68,7 +68,8 @@ bool monitor_send_config(const monitor_periods_t *periods);
  * as a bit mask every node or parameter that made it (bit n-1 = MCUn or Pn). Order: peers that
  * restarted; peers whose link changed, one event per new link state; MCU1's own state; then
  * parameters: owner went offline, owner back, became VALID, became INVALID, became FRESH,
- * became STALE. Called every 5 ms, so a change that reverts within one 5 ms step is not seen.
+ * became STALE. The app calls it right after anything that can change one of these (Het, 13 Nov
+ * 2026: events option b; app_master.c), so it sees every change, however short.
  * Events wait in a queue and are never replaced; if it is full, an event is lost and counted
  * (events_dropped, frames_skipped). Returns the number of events made. */
 uint32_t monitor_send_events(const monitor_view_t *view);

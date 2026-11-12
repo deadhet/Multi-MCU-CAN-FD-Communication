@@ -1,12 +1,14 @@
 """EVENT frames (§8.3): in words, and replayed as state.
 
-MCU1 compares its state every 5 ms with the previous look and sends one event per kind of change,
-naming every node or parameter that made it as a bit mask (bit n-1 = MCUn or Pn).
+MCU1 looks for changes right after anything that can make one (change counts in diag/ and params/;
+Het, 13 Nov 2026: events option b), compares its state with the previous look and sends one event
+per kind of change, naming every node or parameter that made it as a bit mask (bit n-1 = MCUn or Pn).
+Every change is reported, however short.
 
-Replaying events over a snapshot must give the next snapshot's states: links, MCU1's own state,
-and per parameter valid / fresh / owner offline. On MCU1 the event task runs in the same pass as,
-and before, the snapshot task, so a snapshot already includes the events made with it. A snapshot
-whose task started late may show a change whose event is made up to 5 ms after it.
+Replaying events over a snapshot must give the next snapshot's states exactly: links, MCU1's own
+state, and per parameter valid / fresh / owner offline. Before every snapshot MCU1 looks once more,
+on the snapshot's own view, and those events go out before the snapshot. So the events received
+before a snapshot explain it completely, with no time allowance.
 """
 
 from __future__ import annotations
@@ -72,18 +74,18 @@ def apply(st: State, e: pb.Event) -> None:
             st[f"P{p} {key}"] = value
 
 
-def replay_check(frames: list, after_ms: int = 5) -> tuple[int, list[str]]:
-    """Checks that the events between two snapshots turn the first into the second (allowing for
-    events made up to after_ms after the second). Frames in arrival order, with .type, .sequence
-    and .message. Snapshots after a gap explained by frames_skipped, or after MCU1 restarted, start
-    a new comparison. Returns (snapshots checked, differences)."""
+def replay_check(frames: list) -> tuple[int, list[str]]:
+    """Checks that the events between two snapshots turn the first into exactly the second.
+    Frames in arrival order, with .type, .sequence and .message. Snapshots after a gap explained by
+    frames_skipped (a frame MCU1 replaced or an event it could not queue), or after MCU1 restarted,
+    start a new comparison. Returns (snapshots checked, differences)."""
     from .framing import EVENT, SNAPSHOT
 
     model: State | None = None
     last_seq = None
     last_skipped = None
     checked, problems = 0, []
-    for i, f in enumerate(frames):
+    for f in frames:
         if last_seq is not None and (f.sequence - last_seq) % (1 << 32) >= (1 << 31):
             model = None  # MCU1 restarted: its state starts again
         last_seq = f.sequence
@@ -93,15 +95,9 @@ def replay_check(frames: list, after_ms: int = 5) -> tuple[int, list[str]]:
             s = f.message
             now = state_of(s)
             if model is not None and s.frames_skipped == last_skipped:
-                later = dict(model)
-                for g in frames[i + 1:]:
-                    if g.type == SNAPSHOT or (g.type == EVENT and g.message.time_ms > s.uptime_ms + after_ms):
-                        break
-                    if g.type == EVENT:
-                        apply(later, g.message)
                 checked += 1
                 for key, value in now.items():
-                    if value != model.get(key) and value != later.get(key):
+                    if value != model.get(key):
                         problems.append(f"snapshot t={s.uptime_ms}: {key} is {value}, events say {model.get(key)}")
             model = now  # Absolute values: safe to restart from every snapshot
             last_skipped = s.frames_skipped

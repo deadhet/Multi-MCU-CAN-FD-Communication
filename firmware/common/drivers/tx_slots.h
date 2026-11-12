@@ -37,6 +37,7 @@ typedef struct {
     uint32_t replaced[TX_SLOT_COUNT]; /* Pending frames taken back unsent, for a newer one */
     uint32_t queued;                  /* Events handed over to the queue */
     uint32_t queue_full;              /* Events refused: the queue was full */
+    uint32_t queue_peak;              /* Most entries in use at once, the one being sent included */
     uint32_t sent;                    /* Frames the mover finished, events included */
     uint32_t bytes;                   /* Their bytes */
 } tx_slots_stats_t;

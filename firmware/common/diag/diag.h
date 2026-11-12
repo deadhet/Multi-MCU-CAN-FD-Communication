@@ -58,6 +58,12 @@ uint8_t diag_update(uint32_t now_ms, const bool data_ok[COMM_NODE_COUNT]);
 comm_node_state_t diag_own_state(void); /* For this node's heartbeat */
 bool diag_peer_offline(uint8_t node);   /* For params_set_owner_offline() */
 
+/* Goes up by one on every change the UART link reports as an event: a peer's link state, a
+ * restart, the own state. MCU1 looks for events only when this or params_change_count() moved
+ * (Het, 13 Nov 2026: events option b), right after the call that made the change, so even a
+ * state that lasts under a millisecond is reported. 0 after diag_init(). */
+uint32_t diag_change_count(void);
+
 /* Copy of peer node (1-4, not this node). Returns false otherwise. */
 bool diag_get_peer(uint8_t node, uint32_t now_ms, diag_peer_t *out);
 

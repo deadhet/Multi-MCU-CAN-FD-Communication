@@ -20,7 +20,7 @@ static slot_state_t slots[TX_SLOT_COUNT];
 static volatile uint8_t sending;  /* Mover only: slot * 2 + buffer, SENDING_QUEUE or NO_BUFFER */
 static uint32_t sending_len;      /* Mover only */
 static uint32_t handovers;        /* Writer only: numbers the hand-overs, for the order */
-static tx_slots_stats_t stats;    /* handed, replaced, queued, queue_full: writer only.
+static tx_slots_stats_t stats;    /* handed, replaced, queued, queue_full, queue_peak: writer only.
                                    * sent, bytes: mover only */
 
 /* Event queue. Entry i is free while it is outside [head, tail). The writer fills the entry at
@@ -82,6 +82,14 @@ void tx_slots_queue_commit(uint32_t len)
     queue_len[i] = len;
     queue_order[i] = ++handovers;
     stats.queued++;
+
+    /* Entries in use with this one, at the moment the head is read. tx_slots_queue_begin()
+     * refused the event if all were in use, so this is at most TX_QUEUE_ENTRIES. */
+    uint32_t in_use = (tail + 1U) - atomic_load_explicit(&queue_head, memory_order_relaxed);
+    if (in_use > stats.queue_peak) {
+        stats.queue_peak = in_use;
+    }
+
     /* Release: the entry's bytes, length and order are in memory before the mover sees it. */
     atomic_store_explicit(&queue_tail, tail + 1U, memory_order_release);
 }

@@ -42,7 +42,6 @@
 #define SNAPSHOT_FIRST_MS  5U
 #define CONFIG_PERIOD_MS   1000U
 #define CONFIG_FIRST_MS    0U
-#define EVENT_PERIOD_MS    5U /* As freshness and diag, which make the changes */
 
 #define TASK_COUNT (sizeof(tasks) / sizeof(tasks[0]))
 
@@ -127,18 +126,42 @@ static void collect_view(void)
     }
 }
 
-static void snapshot_task(void)
+/* §8.3 EVENT frames (Het, 13 Nov 2026: events option b). diag/ and params/ count every change
+ * of a state the link reports. MCU1 looks right after anything that can make one: after the
+ * task pass (freshness, diag timeouts, own samples) and after each CAN frame drained
+ * (heartbeats, parameter blocks), but only when a count moved. A look compares everything with
+ * the previous look and sends one event per kind of change, so every state is reported however
+ * short, with the ms it happened in. (Before: a look every 5 ms, which missed states shorter
+ * than that, such as RESYNCING at boot.)
+ * Before every snapshot the look runs whatever the counts say, on the snapshot's own view, so
+ * the events always explain the snapshot that follows them. A change found there that no count
+ * flagged means diag/ or params/ missed one: counted in events_unflagged, which must stay 0. */
+static uint32_t looked_diag;     /* diag_change_count() at the last look */
+static uint32_t looked_params;   /* params_change_count() at the last look */
+static uint32_t events_unflagged;
+
+static void look_for_events(bool every_time)
 {
+    uint32_t diag_count = diag_change_count();
+    uint32_t params_count = params_change_count();
+    bool flagged = (diag_count != looked_diag) || (params_count != looked_params);
+
+    if (!flagged && !every_time) {
+        return;
+    }
+    looked_diag = diag_count;
+    looked_params = params_count;
     collect_view();
-    (void)monitor_send_snapshot(&view); /* A skipped snapshot is counted inside monitor/ */
+    uint32_t made = monitor_send_events(&view);
+    if (!flagged) {
+        events_unflagged += made;
+    }
 }
 
-/* §8.3 EVENT frames: every 5 ms, right after the freshness and diag tasks of the same pass,
- * every change since the previous run, grouped. */
-static void event_task(void)
+static void snapshot_task(void)
 {
-    collect_view();
-    (void)monitor_send_events(&view);
+    look_for_events(true); /* Collects the view the snapshot is made from */
+    (void)monitor_send_snapshot(&view); /* A skipped snapshot is counted inside monitor/ */
 }
 
 static void config_task(void)
@@ -185,7 +208,8 @@ static void report_task(void)
     uart_debug_write("\n");
 
     /* UART link: frames and bytes fully handed to the USART, snapshots and CONFIGs handed over,
-     * events queued and dropped (queue full), frames never sent (replaced or dropped, §8.4),
+     * events queued and dropped (queue full), most events in the queue at once (of TX_QUEUE_ENTRIES), changes
+     * no count flagged (must stay 0), frames never sent (replaced or dropped, §8.4),
      * frames not encoded, last and largest snapshot on the wire in bytes. */
     tx_slots_stats_t link;
     monitor_stats_t mon;
@@ -203,6 +227,10 @@ static void report_task(void)
     uart_debug_write_u32(mon.events);
     uart_debug_write(" ev_drop=");
     uart_debug_write_u32(mon.events_dropped);
+    uart_debug_write(" ev_peak=");
+    uart_debug_write_u32(link.queue_peak);
+    uart_debug_write(" ev_unflagged=");
+    uart_debug_write_u32(events_unflagged);
     uart_debug_write(" skipped=");
     uart_debug_write_u32(mon.skipped);
     uart_debug_write(" enc_err=");
@@ -218,7 +246,6 @@ static sched_task_t tasks[] = {
     { param_task, PARAM_PERIOD_MS, 0U, "param" },
     { freshness_task, FRESHNESS_PERIOD_MS, 0U, "fresh" },
     { diag_task, DIAG_PERIOD_MS, 0U, "diag" },
-    { event_task, EVENT_PERIOD_MS, 0U, "event" },
     { heartbeat_task, HEARTBEAT_PERIOD_MS, HEARTBEAT_FIRST_MS - HEARTBEAT_PERIOD_MS, "hb" },
     { report_task, REPORT_PERIOD_MS, REPORT_FIRST_MS - REPORT_PERIOD_MS, "report" },
     { snapshot_task, SNAPSHOT_PERIOD_MS, SNAPSHOT_FIRST_MS - SNAPSHOT_PERIOD_MS, "snap" },
@@ -247,6 +274,7 @@ int main(void)
     for (;;) {
         sched_pass_mark();
         sched_run_due();
+        look_for_events(false); /* Changes made by the tasks of this pass */
 
         /* Drain the CAN RX ring on every pass (Design Document §4.1). comm validates and counts
          * each frame; params/ takes the accepted parameter blocks and diag/ the heartbeats.
@@ -260,6 +288,7 @@ int main(void)
             } else {
                 diag_on_heartbeat(frame.source, &frame.body.heartbeat, frame.restart, frame.rx_time_ms);
             }
+            look_for_events(false); /* Changes made by this frame */
         }
     }
 }

@@ -164,3 +164,11 @@ def test_c_events_decode_in_python(c_frames):
         "t=1005 P6 BECAME_INVALID",
         "t=1005 P1 P2 P3 P4 P5 P6 P11 BECAME_FRESH",
     ]
+
+
+def test_python_encoder_reproduces_the_c_frames(c_frames):
+    """framing.encode_frame() (used by tests and tools that play MCU1) gives the same bytes as
+    MCU1's C code for the same message and sequence."""
+    encoded, _ = framing.split_frames(FRAMES_FILE.read_bytes())
+    for enc, frame in zip(encoded, c_frames):
+        assert framing.encode_frame(frame.type, frame.sequence, frame.message) == enc + b"\x00"

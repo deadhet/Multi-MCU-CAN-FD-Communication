@@ -88,6 +88,11 @@ bool params_node_synced(uint8_t node);
  * view here; params/ itself never decides it. Their values, validity and freshness are kept.
  * Each change is logged. Ignored for this node and for 0/5+. */
 void params_set_owner_offline(uint8_t node, bool offline, uint32_t now_ms);
+
+/* Goes up by one on every change the UART link reports as an event: a parameter's validity,
+ * its freshness, or its owner-offline flag. With diag_change_count(), tells MCU1 when to look
+ * for events (Het, 13 Nov 2026: events option b). 0 after params_init(). */
+uint32_t params_change_count(void);
 uint32_t params_value_rejected(void);
 void params_get_stats(params_stats_t *out);
 

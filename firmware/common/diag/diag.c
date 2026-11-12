@@ -54,6 +54,7 @@ typedef struct {
 
 static peer_t peers[COMM_NODE_COUNT];
 static comm_node_state_t own_state;
+static uint32_t changes; /* diag_change_count(): link states, restarts and own state changed */
 
 static const char *const link_names[] = {
     [DIAG_UNKNOWN] = "UNKNOWN",
@@ -104,6 +105,7 @@ static void set_link(uint8_t node, diag_link_t link, uint32_t t_ms)
 
     if (p->link != link) {
         p->link = link;
+        changes++;
         log_peer(node, t_ms, link_names[link]);
     }
 }
@@ -112,6 +114,7 @@ static void set_own(comm_node_state_t state, uint32_t t_ms)
 {
     if (own_state != state) {
         own_state = state;
+        changes++;
         write_field(NODE_TAG " t=", t_ms);
         uart_debug_write(" diag self ");
         uart_debug_write(state_names[state]);
@@ -125,6 +128,7 @@ void diag_init(void)
         peers[n] = (peer_t){ .link = DIAG_UNKNOWN };
     }
     own_state = COMM_STATE_BOOT;
+    changes = 0U;
 }
 
 /* True if a heartbeat's uptime shows that the peer restarted. The uptime is a uint32 ms count
@@ -155,6 +159,7 @@ void diag_on_heartbeat(uint8_t node, const comm_heartbeat_t *hb, bool restart, u
     bool restarted = restart || (p->heard && uptime_went_back(p, hb->uptime_ms, rx_time_ms));
     if (restarted) {
         p->restarts++;
+        changes++;
         log_peer(node, rx_time_ms, "RESTART");
     }
 
@@ -178,6 +183,7 @@ void diag_on_heartbeat(uint8_t node, const comm_heartbeat_t *hb, bool restart, u
             p->confirm_needed = false;
             p->recoveries++;
             p->link = DIAG_ONLINE;
+            changes++;
             log_peer(node, rx_time_ms, "ONLINE recovered");
         }
     } else if (p->link == DIAG_DATA_INVALID) {
@@ -286,6 +292,11 @@ uint8_t diag_update(uint32_t now_ms, const bool data_ok[COMM_NODE_COUNT])
 comm_node_state_t diag_own_state(void)
 {
     return own_state;
+}
+
+uint32_t diag_change_count(void)
+{
+    return changes;
 }
 
 bool diag_peer_offline(uint8_t node)
