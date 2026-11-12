@@ -1,6 +1,6 @@
 /* CAN FD application protocol. Section numbers refer to the Design Document. */
 #include "comm/comm.h"
-#include "comm/crc16.h"
+#include "util/crc16.h"
 #include "drivers/fdcan.h"
 #include "drivers/systick.h"
 #include "drivers/uart.h"

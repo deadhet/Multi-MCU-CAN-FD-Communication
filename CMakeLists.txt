@@ -25,7 +25,7 @@ set(COMMON_SOURCES
   ${FW}/common/drivers/uart.c
   ${FW}/common/sched/scheduler.c
   ${FW}/common/comm/comm.c
-  ${FW}/common/comm/crc16.c
+  ${FW}/common/util/crc16.c
   ${FW}/common/diag/diag.c
   ${FW}/common/system_table.c
   ${FW}/common/params/params.c
@@ -55,7 +55,16 @@ function(add_image target id app_source)
     COMMAND ${ARM_SIZE} $<TARGET_FILE:${target}>)
 endfunction()
 
-add_image(node1 1 ${FW}/nodes/master/app_master.c ${FW}/common/monitor/monitor.c)
+# MCU1 also runs the UART link: monitor/ encodes Protobuf with nanopb (generated code in
+# monitor.pb.c, runtime in third_party/nanopb).
+add_image(node1 1 ${FW}/nodes/master/app_master.c
+  ${FW}/common/monitor/monitor.c
+  ${FW}/common/monitor/monitor.pb.c
+  ${FW}/common/monitor/cobs.c
+  ${FW}/common/drivers/uart_link.c
+  ${FW}/third_party/nanopb/pb_common.c
+  ${FW}/third_party/nanopb/pb_encode.c)
+target_include_directories(node1 SYSTEM PRIVATE ${FW}/third_party/nanopb)
 add_image(node2 2 ${FW}/nodes/slave/app_slave.c)
 add_image(node3 3 ${FW}/nodes/slave/app_slave.c)
 add_image(node4 4 ${FW}/nodes/slave/app_slave.c)

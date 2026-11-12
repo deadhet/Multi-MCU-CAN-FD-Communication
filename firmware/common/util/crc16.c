@@ -1,4 +1,4 @@
-#include "comm/crc16.h"
+#include "util/crc16.h"
 
 #define CRC16_POLY 0x1021U
 

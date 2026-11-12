@@ -28,3 +28,17 @@ gcc -std=c11 -Wall -Wextra -Wshadow -Werror -O2 \
     "$repo/firmware/tests/host/test_diag.c" "$repo/firmware/common/diag/diag.c" \
     -o "$out/test_diag"
 "$out/test_diag"
+
+nanopb="$repo/firmware/third_party/nanopb"
+gcc -std=c11 -Wall -Wextra -Wshadow -Werror -O2 \
+    -I"$repo/firmware/common" -isystem "$nanopb" \
+    -DNODE_ID=1 \
+    "$repo/firmware/tests/host/test_monitor.c" "$repo/firmware/common/monitor/monitor.c" \
+    "$repo/firmware/common/monitor/monitor.pb.c" "$repo/firmware/common/monitor/cobs.c" \
+    "$repo/firmware/common/util/crc16.c" "$repo/firmware/common/system_table.c" \
+    "$nanopb/pb_common.c" "$nanopb/pb_encode.c" "$nanopb/pb_decode.c" \
+    -lm -o "$out/test_monitor"
+"$out/test_monitor" "$out/monitor_frames.bin"
+
+# Python side of the UART link, including decoding the frames test_monitor just wrote.
+(cd "$repo/dashboard" && uv run --frozen pytest -q tests)

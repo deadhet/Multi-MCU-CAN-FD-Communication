@@ -1,0 +1,8 @@
+# nanopb limits for monitor.proto: every repeated field and string gets a fixed maximum, so the
+# generated C structs are fixed-size (no malloc, no callbacks) and every message has a maximum
+# encoded size known at compile time (monitor_<Message>_size).
+monitor.Snapshot.nodes          max_count:4
+monitor.Snapshot.params         max_count:20
+monitor.Config.params           max_count:20
+monitor.Config.ParamInfo.name   max_size:16
+monitor.Config.firmware         max_size:16

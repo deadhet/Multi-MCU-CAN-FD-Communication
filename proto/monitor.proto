@@ -1,0 +1,143 @@
+// UART link, MCU1 -> host (Design Document §8): the payload of every frame.
+// Frame: [version << 4 | type][UART sequence, uint32 LE][payload][CRC-16 LE], COBS encoded,
+// then a 0x00 terminator. type 1 = Snapshot, 2 = Event, 3 = Config.
+// This file is the specification of the payload. Firmware (nanopb) and dashboard (Python) are
+// both generated from it: scripts/gen_proto.sh.
+// Zero is the "unknown / not good" value of every enum, so a missing field never reads as healthy.
+syntax = "proto3";
+
+package monitor;
+
+enum Validity {
+  NEVER_RECEIVED = 0;
+  VALID = 1;
+  INVALID = 2;
+}
+
+enum Freshness {
+  STALE = 0;
+  FRESH = 1;
+}
+
+enum SourceStatus {
+  SOURCE_OK = 0;
+  SOURCE_STALE = 1;
+  SOURCE_FAULT = 2;
+  SOURCE_RESERVED = 3;
+}
+
+enum NodeState {
+  BOOT = 0;
+  RESYNCING = 1;
+  OPERATIONAL = 2;
+}
+
+// A node as MCU1 sees it (diag/). SELF is MCU1's own row.
+enum LinkState {
+  UNKNOWN = 0;
+  ONLINE = 1;
+  LATE = 2;
+  OFFLINE = 3;
+  RECOVERING = 4;
+  NO_HEARTBEAT = 5;
+  DATA_INVALID = 6;
+  SELF = 7;
+}
+
+// One parameter of MCU1's database (dashboard section 3).
+message Parameter {
+  uint32 id = 1;                  // 1-20
+  uint32 source = 2;              // owner MCU 1-4
+  oneof value {                   // typed, so the host needs no copy of the parameter table
+    float f32 = 3;
+    sint32 i32 = 4;
+    uint32 u32 = 5;
+    bool flag = 6;
+  }
+  Validity validity = 7;
+  Freshness freshness = 8;
+  uint32 age_ms = 9;              // time since its last update, at the snapshot
+  uint32 sequence = 10;           // block sequence that last updated it (own: samples taken)
+  SourceStatus source_status = 11;
+  bool owner_offline = 12;
+}
+
+// One MCU (dashboard section 2).
+message NodeHealth {
+  uint32 node = 1;                // 1-4
+  LinkState link = 2;
+  NodeState reported_state = 3;   // from its last heartbeat (MCU1: its own state)
+  uint32 heartbeat_age_ms = 4;    // since its last heartbeat (since MCU1's boot if never)
+  uint32 missed = 5;              // heartbeats missed since the last one
+  uint32 restarts = 6;
+  uint32 recoveries = 7;
+  uint32 synced_count = 8;        // as the node reported it in its heartbeat
+  uint32 error_summary = 9;       // as the node reported it in its heartbeat
+  uint32 data_age_ms = 10;        // since its last accepted parameter block
+}
+
+// Every 100 ms. Self-contained: one good snapshot restores the whole view.
+message Snapshot {
+  uint32 uptime_ms = 1;           // MCU1's clock
+  repeated NodeHealth nodes = 2;  // 4, MCU1 first
+  repeated Parameter params = 3;  // 20, P1 first
+  uint32 snapshots_skipped = 4;   // §8.4 overflow policy, since boot
+  uint32 online_count = 5;        // nodes ONLINE (or SELF) out of 4 (section 1)
+  uint32 synced_count = 6;        // parameters VALID and FRESH at MCU1, out of 20 (section 1)
+  uint32 health_percent = 7;      // network health, 0-100; formula in docs/uart_protocol.md
+}
+
+// Changes, sent the moment MCU1 sees them, grouped: one event names every parameter (or node)
+// that made the same change in the same 5 ms run, as a bit mask (bit n-1 = Pn or MCUn).
+enum ParamChange {
+  BECAME_VALID = 0;
+  BECAME_INVALID = 1;
+  BECAME_FRESH = 2;
+  BECAME_STALE = 3;
+  OWNER_WENT_OFFLINE = 4;
+  OWNER_BACK = 5;
+}
+
+message ParamEvent {
+  ParamChange change = 1;
+  uint32 params = 2;              // bit mask, bits 0-19
+}
+
+message NodeEvent {
+  uint32 nodes = 1;               // bit mask, bits 0-3
+  oneof change {
+    LinkState link = 2;           // their new link state
+    bool restarted = 3;           // a restart was counted
+  }
+}
+
+message Event {
+  uint32 time_ms = 1;             // MCU1's clock
+  oneof body {
+    ParamEvent param = 2;
+    NodeEvent node = 3;
+    NodeState own_state = 4;      // MCU1's own state changed
+  }
+}
+
+// At start-up and every second, so a host that connects late still gets it.
+message Config {
+  message ParamInfo {
+    uint32 id = 1;
+    string name = 2;
+    uint32 owner = 3;
+    uint32 sample_period_ms = 4;
+  }
+
+  uint32 protocol_version = 1;    // the version in the frame's first byte
+  string firmware = 2;
+  uint32 arbitration_bps = 3;     // configured, 500000
+  uint32 data_bps = 4;            // configured, 2000000
+  bool brs = 5;
+  uint32 node_count = 6;
+  uint32 param_count = 7;
+  uint32 param_period_ms = 8;
+  uint32 heartbeat_period_ms = 9;
+  uint32 snapshot_period_ms = 10;
+  repeated ParamInfo params = 11; // 20
+}

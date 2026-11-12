@@ -3,3 +3,6 @@ error.md
 build/
 logs/*
 !logs/.gitkeep
+dashboard/.venv/
+__pycache__/
+.pytest_cache/

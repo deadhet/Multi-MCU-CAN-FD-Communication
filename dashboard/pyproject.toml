@@ -1,0 +1,25 @@
+[project]
+name = "noccarc-dashboard"
+version = "0.1.0"
+description = "Monitoring dashboard for the Multi-MCU CAN FD network: reads MCU1's UART link (Protobuf in COBS frames)"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "protobuf>=5.29",
+    "pyserial>=3.5",
+]
+
+[dependency-groups]
+dev = [
+    "nanopb==0.4.9.1",      # code generator; the C runtime of the same version is in firmware/third_party/nanopb
+    "grpcio-tools>=1.66",   # protoc for the Python code and for nanopb's generator
+    "pytest>=8.3",
+]
+
+[tool.uv]
+package = false
+python-preference = "only-managed"        # never the system Python
+exclude-newer = "2026-10-28T00:00:00Z"    # only releases at least two weeks old: reproducible lock
+
+[tool.pytest.ini_options]
+pythonpath = ["."]   # the package is used from source (package = false)
+testpaths = ["tests"]

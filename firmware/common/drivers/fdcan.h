@@ -55,4 +55,11 @@ bool fdcan_receive(uint32_t queue, can_rx_slot_t *out);
 
 void fdcan_get_stats(fdcan_stats_t *out);
 
+/* The configured bit rates and BRS, for the UART link's CONFIG message. Computed from the same
+ * constants that set NBTP and DBTP: Renode does not keep writes to those registers, so they
+ * cannot be read back there (docs/setup_findings.md). */
+uint32_t fdcan_nominal_bitrate(void);
+uint32_t fdcan_data_bitrate(void);
+bool fdcan_brs_enabled(void);
+
 #endif

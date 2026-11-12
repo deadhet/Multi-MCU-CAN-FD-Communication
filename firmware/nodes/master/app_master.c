@@ -5,10 +5,12 @@
 
 #include "comm/comm.h"
 #include "diag/diag.h"
+#include "monitor/monitor.h"
 #include "params/param_source.h"
 #include "params/params.h"
 #include "drivers/board.h"
 #include "drivers/systick.h"
+#include "drivers/uart_link.h"
 #include "drivers/uart.h"
 #include "sched/scheduler.h"
 
@@ -31,6 +33,15 @@
  * restart is announced before its data arrives. One node's frames leave in the order queued (Tx
  * FIFO mode), whatever their IDs. Start value 0 - 100 makes the first run at 0 ms. */
 #define HEARTBEAT_FIRST_MS 0U
+
+/* §8.3: a SNAPSHOT every 100 ms, a CONFIG at start-up and every second. Snapshots run 5 ms after
+ * a 10 ms send, like the report, and right after it in the task table: the snapshot that follows
+ * the debug report in the same pass shows the same values, so the two can be compared exactly.
+ * (Before the report, its work moved the report to the next ms in Renode.) */
+#define SNAPSHOT_PERIOD_MS 100U
+#define SNAPSHOT_FIRST_MS  5U
+#define CONFIG_PERIOD_MS   1000U
+#define CONFIG_FIRST_MS    0U
 
 #define TASK_COUNT (sizeof(tasks) / sizeof(tasks[0]))
 
@@ -96,6 +107,36 @@ static void diag_task(void)
     }
 }
 
+/* §8: the UART link. The app collects copies of the database and of every node's health, so
+ * monitor/ calls no other service (§4.4). */
+static void snapshot_task(void)
+{
+    static monitor_view_t view; /* Over 1 KB: static, not on the stack */
+
+    view.now_ms = systick_now_ms();
+    view.own_state = diag_own_state();
+    view.synced_count = params_synced_count();
+    view.own_error_summary = error_summary();
+    for (uint8_t id = 1U; id <= PARAM_COUNT; id++) {
+        (void)params_get(id, view.now_ms, &view.params[id - 1U]);
+    }
+    for (uint8_t node = 1U; node <= COMM_NODE_COUNT; node++) {
+        (void)diag_get_peer(node, view.now_ms, &view.peers[node - 1U]); /* False for this node */
+    }
+    (void)monitor_send_snapshot(&view); /* A skipped snapshot is counted inside monitor/ */
+}
+
+static void config_task(void)
+{
+    static const monitor_periods_t periods = {
+        .param_period_ms = PARAM_PERIOD_MS,
+        .heartbeat_period_ms = HEARTBEAT_PERIOD_MS,
+        .snapshot_period_ms = SNAPSHOT_PERIOD_MS,
+    };
+
+    (void)monitor_send_config(&periods);
+}
+
 static void report_task(void)
 {
     comm_debug_report();
@@ -107,6 +148,32 @@ static void report_task(void)
     uart_debug_write("MCU" NUMBER_TEXT(NODE_ID) " log dropped=");
     uart_debug_write_u32(uart_debug_dropped());
     uart_debug_write("\n");
+
+    /* UART link: frames and bytes queued, frames that did not fit, snapshots and CONFIGs sent,
+     * snapshots skipped (§8.4), last and largest snapshot on the wire in bytes. */
+    uart_link_stats_t link;
+    monitor_stats_t mon;
+    uart_link_get_stats(&link);
+    monitor_get_stats(&mon);
+    uart_debug_write("MCU" NUMBER_TEXT(NODE_ID) " link frames=");
+    uart_debug_write_u32(link.frames);
+    uart_debug_write(" bytes=");
+    uart_debug_write_u32(link.bytes);
+    uart_debug_write(" refused=");
+    uart_debug_write_u32(link.refused);
+    uart_debug_write(" snap=");
+    uart_debug_write_u32(mon.snapshots);
+    uart_debug_write(" cfg=");
+    uart_debug_write_u32(mon.configs);
+    uart_debug_write(" skipped=");
+    uart_debug_write_u32(mon.skipped);
+    uart_debug_write(" enc_err=");
+    uart_debug_write_u32(mon.encode_errors);
+    uart_debug_write(" snap_bytes=");
+    uart_debug_write_u32(mon.last_snapshot_bytes);
+    uart_debug_write("/");
+    uart_debug_write_u32(mon.max_snapshot_bytes);
+    uart_debug_write("\n");
 }
 
 static sched_task_t tasks[] = {
@@ -115,6 +182,8 @@ static sched_task_t tasks[] = {
     { diag_task, DIAG_PERIOD_MS, 0U },
     { heartbeat_task, HEARTBEAT_PERIOD_MS, HEARTBEAT_FIRST_MS - HEARTBEAT_PERIOD_MS },
     { report_task, REPORT_PERIOD_MS, REPORT_FIRST_MS - REPORT_PERIOD_MS },
+    { snapshot_task, SNAPSHOT_PERIOD_MS, SNAPSHOT_FIRST_MS - SNAPSHOT_PERIOD_MS },
+    { config_task, CONFIG_PERIOD_MS, CONFIG_FIRST_MS - CONFIG_PERIOD_MS },
 };
 
 int main(void)
@@ -131,14 +200,16 @@ int main(void)
         for (;;) {
         }
     }
+    uart_link_init();
+    monitor_init();
 
     for (;;) {
         sched_run_due(tasks, TASK_COUNT);
 
         /* Drain the CAN RX ring on every pass (Design Document §4.1). comm validates and counts
          * each frame; params/ takes the accepted parameter blocks and diag/ the heartbeats.
-         * diag/ also hears of each accepted block, for its own-state rule. Rejected frames
-         * reach neither. monitor/ (UART link) follows in a later stage. */
+         * diag/ also hears of each accepted block, for its own-state rule.
+         * Rejected frames reach neither. */
         comm_frame_t frame;
         while (comm_receive(&frame)) {
             if (frame.type == COMM_MSG_PARAM) {

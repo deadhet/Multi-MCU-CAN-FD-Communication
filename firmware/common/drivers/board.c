@@ -6,6 +6,7 @@
 
 #define PIN_MODE_AF 2U
 #define USART1_TX_AF 7U
+#define USART3_TX_AF 7U
 #define FDCAN1_AF 9U
 /* Medium: 60 MHz at 3.3 V and 50 pF without the I/O compensation cell (DS p.141, Table 53).
  * CAN FD at 2 Mbit/s needs 1 MHz. */
@@ -52,6 +53,22 @@ static void fdcan1_pins_init(void)
     // GPIOD->MODER   = (GPIOD->MODER   & ~0x0000000FUL) | (0x2UL << 0) | (0x2UL << 2);
     GPIOD->MODER = (GPIOD->MODER & ~(GPIO_MODER_MODE0 | GPIO_MODER_MODE1))
                  | (PIN_MODE_AF << GPIO_MODER_MODE0_Pos) | (PIN_MODE_AF << GPIO_MODER_MODE1_Pos);
+}
+
+/* UART link (Design Document §8.1): USART3 TX on PD8, AF7. Transmit only, so no RX pin. The
+ * kernel clock is left at its reset choice, the APB1 clock (CLOCK_PCLK_HZ). MCU1 only: called by
+ * uart_link_init(), not by board_init(). */
+void board_uart_link_pins_init(void)
+{
+    RCC->AHB4ENR |= RCC_AHB4ENR_GPIODEN;
+    RCC->APB1LENR |= RCC_APB1LENR_USART3EN;
+    (void)RCC->AHB4ENR;
+    (void)RCC->APB1LENR;
+    (void)GPIOD->MODER;
+    (void)USART3->CR1;
+
+    GPIOD->AFR[1] = (GPIOD->AFR[1] & ~GPIO_AFRH_AFSEL8) | (USART3_TX_AF << GPIO_AFRH_AFSEL8_Pos);
+    GPIOD->MODER = (GPIOD->MODER & ~GPIO_MODER_MODE8) | (PIN_MODE_AF << GPIO_MODER_MODE8_Pos);
 }
 
 void board_init(void)

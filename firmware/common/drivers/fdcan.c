@@ -314,3 +314,18 @@ void FDCAN1_IT0_IRQHandler(void)
         FDCAN1->RXF0A = index;
     }
 }
+
+uint32_t fdcan_nominal_bitrate(void)
+{
+    return CLOCK_FDCAN_HZ / BIT_PRESCALER / NOMINAL_TQ;
+}
+
+uint32_t fdcan_data_bitrate(void)
+{
+    return CLOCK_FDCAN_HZ / BIT_PRESCALER / DATA_TQ;
+}
+
+bool fdcan_brs_enabled(void)
+{
+    return true; /* fdcan_send() sets BRS in every Tx element */
+}

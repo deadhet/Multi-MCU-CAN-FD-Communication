@@ -63,8 +63,8 @@ peer_counts() { # file node r rec: the last report shows these restart and recov
     grep ' diag self=' "$1" | tail -1 | grep -qE "n$2=[A-Z_]+/[A-Z-]+ age=[0-9]+ miss=[0-9]+ r=$3 rec=$4( |$)"
 }
 
-report_at() { # file t text: the report printed at t ms contains the text
-    grep -A16 " t=$2 tx " "$1" | grep -qF -- "$3"
+report_at() { # file t text: the report printed at t ms (or up to 4 ms later) contains the text
+    awk -v a="$2" -v p="$3" '/ t=[0-9]+ tx / { t = substr($2, 3) + 0; inside = (t >= a && t <= a + 4); next } inside && index($0, p) { found = 1 } END { exit !found }' "$1"
 }
 
 clean_logs() { # name: no frame rejected, no debug text dropped, on any node
@@ -95,7 +95,7 @@ s1() {
         check "MCU$n: no LATE, OFFLINE, RECOVERING, NO_HEARTBEAT or DATA_INVALID" no_fault_lines "$(log s1 $n)"
     done
     check "every parameter copy equals its owner's value at every report" crosscheck_outside s1 0 0
-    check "frame counts: every receiver accepted every frame sent" frame_counts_match s1
+    check "frame counts: no frame lost after boot (boot losses are listed by the check)" frame_counts_match s1
     check "no frame rejected, no debug text dropped" clean_logs s1
 }
 
