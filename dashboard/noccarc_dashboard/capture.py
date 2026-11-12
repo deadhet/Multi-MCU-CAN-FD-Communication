@@ -4,8 +4,8 @@ optionally compares the snapshots with MCU1's debug log.
     uv run python -m noccarc_dashboard.capture --port 3456 --compare-log ../logs/mcu1.log
 
 The debug report at t ms and the snapshot right after it run in the same main-loop pass on
-MCU1 (both 5 ms after a send), so all 20 values (raw 4 bytes), the synced count, MCU1's own state and
-every node's link state must be identical in both.
+MCU1 (both 5 ms after a send), so all 20 values (raw 4 bytes), the synced count, the health and
+online count, MCU1's own state and every node's link state must be identical in both.
 """
 
 from __future__ import annotations
@@ -60,6 +60,9 @@ def read_log(path: Path) -> dict[int, dict]:
         elif t is not None and (m := re.match(r"MCU1 diag self=(\w+)(.*)", line)):
             reports[t]["self"] = m.group(1)
             reports[t]["links"] = {int(n): link for n, link in re.findall(r" n(\d)=([A-Z_]+)/", m.group(2))}
+        elif t is not None and (m := re.match(r"MCU1 health=(\d+) online=(\d+)/", line)):
+            reports[t]["health"] = int(m.group(1))
+            reports[t]["online"] = int(m.group(2))
     return reports
 
 
@@ -137,6 +140,8 @@ def main() -> int:
             problems = [f"P{p.id} {raw_bits(p)} vs {rep['values'][p.id]}" for p in s.params if raw_bits(p) != rep["values"][p.id]]
             if s.synced_count != rep["synced"]:
                 problems.append(f"synced {s.synced_count} vs {rep['synced']}")
+            if (s.health_percent, s.online_count) != (rep.get("health"), rep.get("online")):
+                problems.append(f"health/online {s.health_percent}/{s.online_count} vs {rep.get('health')}/{rep.get('online')}")
             if monitor_pb2.NodeState.Name(s.nodes[0].reported_state) != rep["self"]:
                 problems.append(f"own state {s.nodes[0].reported_state} vs {rep['self']}")
             for n in s.nodes[1:]:

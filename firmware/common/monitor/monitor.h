@@ -62,4 +62,16 @@ bool monitor_send_config(const monitor_periods_t *periods);
 
 void monitor_get_stats(monitor_stats_t *out);
 
+/* Controllers online out of 4: this node, plus every peer whose link is ONLINE. A peer that is
+ * LATE, OFFLINE, RECOVERING, NO_HEARTBEAT, DATA_INVALID or never heard does not count. */
+uint32_t monitor_online_count(const monitor_view_t *view);
+
+/* Network health, 0-100 (Het, 12 Nov 2026; assignment dashboard Section 1): the weaker of
+ *   controllers online       online / 4
+ *   parameters synchronised  synced / 20   (VALID and FRESH at MCU1, params_synced_count())
+ * each in whole percent, rounded down. Never better than the weakest part. Examples:
+ *   4/4, 20/20 -> 100    3/4, 15/20 -> 75    4/4, 15/20 -> 75    4/4, 0/20 -> 0
+ * MCU1 sends it in every snapshot and prints it in its 1 s report, from the same functions. */
+uint32_t monitor_health_percent(uint32_t online, uint32_t synced);
+
 #endif

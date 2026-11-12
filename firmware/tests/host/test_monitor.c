@@ -257,6 +257,7 @@ static void test_snapshot(void)
     CHECK(pb_decode(&in, monitor_Snapshot_fields, &s));
     CHECK(s.uptime_ms == 1005U && s.nodes_count == 4U && s.params_count == 20U);
     CHECK(s.online_count == 2U && s.synced_count == 12U && s.frames_skipped == 0U);
+    CHECK(s.health_percent == 50U); /* The weaker of 2/4 (50 %) and 12/20 (60 %) */
 
     CHECK(s.nodes[0].node == 1U && s.nodes[0].link == monitor_LinkState_SELF);
     CHECK(s.nodes[0].reported_state == monitor_NodeState_OPERATIONAL && s.nodes[0].synced_count == 12U && s.nodes[0].error_summary == 2U);
@@ -377,6 +378,38 @@ static void test_latest_wins(void)
     link_busy = false;
 }
 
+static void test_health(void)
+{
+    printf("Health (Het, option b): the weaker of online/4 and synced/20, whole percent, rounded down\n");
+    static const struct { uint32_t online, synced, health; } cases[] = {
+        { 4U, 20U, 100U }, /* all fine */
+        { 3U, 15U, 75U },  /* one controller dead, its 5 parameters with it */
+        { 4U, 15U, 75U },  /* all online, one sensor faulty */
+        { 4U, 5U, 25U },   /* just booted */
+        { 4U, 0U, 0U },    /* all talking, no data gets through: 0, not 50 */
+        { 4U, 19U, 95U },
+        { 1U, 20U, 25U },  /* alone */
+        { 4U, 1U, 5U },
+        { 3U, 19U, 75U },
+        { 0U, 0U, 0U },
+    };
+    for (uint32_t k = 0U; k < sizeof(cases) / sizeof(cases[0]); k++) {
+        CHECK(monitor_health_percent(cases[k].online, cases[k].synced) == cases[k].health);
+    }
+
+    /* Online: this node always, peers only when ONLINE. */
+    monitor_view_t view;
+    make_view(&view); /* n2 ONLINE, n3 OFFLINE, n4 UNKNOWN */
+    CHECK(monitor_online_count(&view) == 2U);
+    view.peers[3].link = DIAG_ONLINE;
+    CHECK(monitor_online_count(&view) == 3U);
+    view.peers[1].link = DIAG_LATE;
+    view.peers[2].link = DIAG_DATA_INVALID;
+    CHECK(monitor_online_count(&view) == 2U);
+    view.peers[0].link = DIAG_ONLINE; /* The entry for this node is ignored */
+    CHECK(monitor_online_count(&view) == 2U);
+}
+
 static void test_worst_case(void)
 {
     printf("Worst case: every field at its largest still fits the generator's maximum\n");
@@ -430,6 +463,7 @@ int main(int argc, char **argv)
     test_snapshot();
     test_config();
     test_latest_wins();
+    test_health();
     test_worst_case();
     if (argc > 1) {
         write_frames_file(argv[1]);

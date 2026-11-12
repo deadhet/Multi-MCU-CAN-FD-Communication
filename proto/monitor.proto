@@ -85,7 +85,8 @@ message Snapshot {
                                   // it while the link was busy (§8.4, latest wins), since boot
   uint32 online_count = 5;        // nodes ONLINE (or SELF) out of 4 (section 1)
   uint32 synced_count = 6;        // parameters VALID and FRESH at MCU1, out of 20 (section 1)
-  uint32 health_percent = 7;      // network health, 0-100; formula in docs/uart_protocol.md
+  uint32 health_percent = 7;      // network health, 0-100: the weaker of online/4 and synced/20,
+                                  // each in whole percent rounded down (Het, 12 Nov 2026)
 }
 
 // Changes, sent the moment MCU1 sees them, grouped: one event names every parameter (or node)

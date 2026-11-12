@@ -108,11 +108,12 @@ static void diag_task(void)
 }
 
 /* §8: the UART link. The app collects copies of the database and of every node's health, so
- * monitor/ calls no other service (§4.4). */
-static void snapshot_task(void)
-{
-    static monitor_view_t view; /* Over 1 KB: static, not on the stack */
+ * monitor/ calls no other service (§4.4). One view, shared by the snapshot and the report's
+ * health line (both run in the main loop, never at the same time). */
+static monitor_view_t view; /* Over 1 KB: static, not on the stack */
 
+static void collect_view(void)
+{
     view.now_ms = systick_now_ms();
     view.own_state = diag_own_state();
     view.synced_count = params_synced_count();
@@ -123,6 +124,11 @@ static void snapshot_task(void)
     for (uint8_t node = 1U; node <= COMM_NODE_COUNT; node++) {
         (void)diag_get_peer(node, view.now_ms, &view.peers[node - 1U]); /* False for this node */
     }
+}
+
+static void snapshot_task(void)
+{
+    collect_view();
     (void)monitor_send_snapshot(&view); /* A skipped snapshot is counted inside monitor/ */
 }
 
@@ -151,6 +157,22 @@ static void report_task(void)
      * counted; this line makes such losses visible. */
     uart_debug_write("MCU" NUMBER_TEXT(NODE_ID) " log dropped=");
     uart_debug_write_u32(uart_debug_dropped());
+    uart_debug_write("\n");
+
+    /* Network health (dashboard Section 1), from the same functions as the snapshot's:
+     * the weaker of controllers online out of 4 and parameters synchronised out of 20. */
+    collect_view();
+    uint32_t online = monitor_online_count(&view);
+    uart_debug_write("MCU" NUMBER_TEXT(NODE_ID) " health=");
+    uart_debug_write_u32(monitor_health_percent(online, view.synced_count));
+    uart_debug_write(" online=");
+    uart_debug_write_u32(online);
+    uart_debug_write("/");
+    uart_debug_write_u32(COMM_NODE_COUNT);
+    uart_debug_write(" synced=");
+    uart_debug_write_u32(view.synced_count);
+    uart_debug_write("/");
+    uart_debug_write_u32(PARAM_COUNT);
     uart_debug_write("\n");
 
     /* UART link: frames and bytes fully handed to the USART, snapshots and CONFIGs handed over,

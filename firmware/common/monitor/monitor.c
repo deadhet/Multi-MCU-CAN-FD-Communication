@@ -180,6 +180,29 @@ static void fill_node(monitor_NodeHealth *h, uint8_t node, const monitor_view_t 
     h->data_age_ms = p->data_age_ms;
 }
 
+uint32_t monitor_online_count(const monitor_view_t *view)
+{
+    uint32_t online = 1U; /* This node */
+
+    for (uint8_t node = 1U; node <= COMM_NODE_COUNT; node++) {
+        if ((node != NODE_ID) && (view->peers[node - 1U].link == DIAG_ONLINE)) {
+            online++;
+        }
+    }
+    return online;
+}
+
+uint32_t monitor_health_percent(uint32_t online, uint32_t synced)
+{
+    /* Each part in whole percent, rounded down; then the weaker one. Rounding each part down
+     * and then taking the smaller gives the same as rounding the smaller part down. */
+    uint32_t nodes_part = (online * 100U) / COMM_NODE_COUNT;
+    uint32_t params_part = (synced * 100U) / PARAM_COUNT;
+    uint32_t health = (nodes_part < params_part) ? nodes_part : params_part;
+
+    return (health > 100U) ? 100U : health;
+}
+
 bool monitor_send_snapshot(const monitor_view_t *view)
 {
     uint32_t size = 0U;
@@ -188,21 +211,17 @@ bool monitor_send_snapshot(const monitor_view_t *view)
     snapshot = (monitor_Snapshot)monitor_Snapshot_init_zero;
     snapshot.uptime_ms = view->now_ms;
     snapshot.nodes_count = COMM_NODE_COUNT;
-    snapshot.online_count = 0U;
     for (uint8_t node = 1U; node <= COMM_NODE_COUNT; node++) {
-        monitor_NodeHealth *h = &snapshot.nodes[node - 1U];
-        fill_node(h, node, view);
-        if ((h->link == monitor_LinkState_SELF) || (h->link == monitor_LinkState_ONLINE)) {
-            snapshot.online_count++;
-        }
+        fill_node(&snapshot.nodes[node - 1U], node, view);
     }
     snapshot.params_count = PARAM_COUNT;
     for (uint32_t i = 0U; i < PARAM_COUNT; i++) {
         fill_parameter(&snapshot.params[i], &view->params[i]);
     }
+    snapshot.online_count = monitor_online_count(view);
     snapshot.synced_count = view->synced_count;
     snapshot.frames_skipped = stats.skipped;
-    snapshot.health_percent = 0U; /* Formula still to be chosen (Het): placeholder */
+    snapshot.health_percent = monitor_health_percent(snapshot.online_count, snapshot.synced_count);
 
     uint32_t n = send_frame(TX_SLOT_SNAPSHOT, out, size, MONITOR_FRAME_SNAPSHOT, monitor_Snapshot_fields, &snapshot);
     if (n == 0U) {
