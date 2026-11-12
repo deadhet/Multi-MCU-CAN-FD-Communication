@@ -13,13 +13,30 @@ typedef struct {
     _Atomic uint8_t pending; /* The pending buffer (0 or 1), or NO_BUFFER */
 } slot_state_t;
 
+#define SENDING_QUEUE 0xFEU /* `sending` value: the event queue's head entry */
+#define QUEUE_MASK    (TX_QUEUE_ENTRIES - 1U)
+
 static slot_state_t slots[TX_SLOT_COUNT];
-static volatile uint8_t sending;  /* Mover only: slot * 2 + buffer, or NO_BUFFER */
+static volatile uint8_t sending;  /* Mover only: slot * 2 + buffer, SENDING_QUEUE or NO_BUFFER */
 static uint32_t sending_len;      /* Mover only */
 static uint32_t handovers;        /* Writer only: numbers the hand-overs, for the order */
-static tx_slots_stats_t stats;    /* handed, replaced: writer only. sent, bytes: mover only */
+static tx_slots_stats_t stats;    /* handed, replaced, queued, queue_full: writer only.
+                                   * sent, bytes: mover only */
+
+/* Event queue. Entry i is free while it is outside [head, tail). The writer fills the entry at
+ * tail and then moves tail; the mover sends the entry at head and moves head only when it is
+ * done, so the writer never touches an entry on its way out. Free-running counters: the
+ * difference counts the entries in use, also after they wrap. */
+static uint8_t *queue_buf;
+static uint32_t queue_entry_size;
+static uint32_t queue_len[TX_QUEUE_ENTRIES];   /* Set by the writer before the hand-over */
+static uint32_t queue_order[TX_QUEUE_ENTRIES]; /* Hand-over number, the same way */
+static _Atomic uint32_t queue_tail;            /* Moved by the writer only */
+static _Atomic uint32_t queue_head;            /* Moved by the mover only */
 
 _Static_assert(ATOMIC_CHAR_LOCK_FREE == 2, "the exchange must not need a lock");
+_Static_assert(ATOMIC_INT_LOCK_FREE == 2, "the queue counters must not need a lock");
+_Static_assert((TX_QUEUE_ENTRIES & QUEUE_MASK) == 0U, "TX_QUEUE_ENTRIES must be a power of two");
 
 void tx_slots_init(void)
 {
@@ -27,10 +44,46 @@ void tx_slots_init(void)
         slots[k] = (slot_state_t){ 0 };
         atomic_init(&slots[k].pending, NO_BUFFER);
     }
+    queue_buf = NULL;
+    queue_entry_size = 0U;
+    atomic_init(&queue_tail, 0U);
+    atomic_init(&queue_head, 0U);
     sending = NO_BUFFER;
     sending_len = 0U;
     handovers = 0U;
     stats = (tx_slots_stats_t){ 0 };
+}
+
+void tx_slots_attach_queue(uint8_t *entries, uint32_t entry_size)
+{
+    queue_buf = entries;
+    queue_entry_size = entry_size;
+}
+
+uint8_t *tx_slots_queue_begin(uint32_t *size)
+{
+    uint32_t tail = atomic_load_explicit(&queue_tail, memory_order_relaxed);
+    uint32_t head = atomic_load_explicit(&queue_head, memory_order_acquire);
+
+    *size = 0U;
+    if ((queue_buf == NULL) || ((tail - head) >= TX_QUEUE_ENTRIES)) {
+        stats.queue_full++;
+        return NULL;
+    }
+    *size = queue_entry_size;
+    return &queue_buf[(tail & QUEUE_MASK) * queue_entry_size];
+}
+
+void tx_slots_queue_commit(uint32_t len)
+{
+    uint32_t tail = atomic_load_explicit(&queue_tail, memory_order_relaxed);
+    uint32_t i = tail & QUEUE_MASK;
+
+    queue_len[i] = len;
+    queue_order[i] = ++handovers;
+    stats.queued++;
+    /* Release: the entry's bytes, length and order are in memory before the mover sees it. */
+    atomic_store_explicit(&queue_tail, tail + 1U, memory_order_release);
 }
 
 void tx_slots_attach(tx_slot_t slot, uint8_t *buf_a, uint8_t *buf_b, uint32_t size)
@@ -82,6 +135,11 @@ void tx_slots_commit(tx_slot_t slot, uint32_t len)
 void tx_slots_done(void)
 {
     if (sending != NO_BUFFER) {
+        if (sending == SENDING_QUEUE) {
+            /* Only now is the entry free for the writer. */
+            uint32_t head = atomic_load_explicit(&queue_head, memory_order_relaxed);
+            atomic_store_explicit(&queue_head, head + 1U, memory_order_release);
+        }
         stats.sent++;
         stats.bytes += sending_len;
         sending = NO_BUFFER;
@@ -99,6 +157,20 @@ bool tx_slots_next(const uint8_t **data, uint32_t *len)
         if ((p != NO_BUFFER) && ((best == (uint32_t)TX_SLOT_COUNT) || ((int32_t)(slots[k].order[p] - best_order) < 0))) {
             best = k;
             best_order = slots[k].order[p];
+        }
+    }
+
+    /* The event queue's oldest entry competes in the same order. */
+    uint32_t head = atomic_load_explicit(&queue_head, memory_order_relaxed);
+    uint32_t tail = atomic_load_explicit(&queue_tail, memory_order_acquire);
+    if (head != tail) {
+        uint32_t i = head & QUEUE_MASK;
+        if ((best == (uint32_t)TX_SLOT_COUNT) || ((int32_t)(queue_order[i] - best_order) < 0)) {
+            sending = SENDING_QUEUE;
+            sending_len = queue_len[i];
+            *data = &queue_buf[i * queue_entry_size];
+            *len = sending_len;
+            return true;
         }
     }
     if (best == (uint32_t)TX_SLOT_COUNT) {

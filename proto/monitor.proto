@@ -92,12 +92,13 @@ message Snapshot {
 // Changes, sent the moment MCU1 sees them, grouped: one event names every parameter (or node)
 // that made the same change in the same 5 ms run, as a bit mask (bit n-1 = Pn or MCUn).
 enum ParamChange {
-  BECAME_VALID = 0;
-  BECAME_INVALID = 1;
-  BECAME_FRESH = 2;
-  BECAME_STALE = 3;
-  OWNER_WENT_OFFLINE = 4;
-  OWNER_BACK = 5;
+  CHANGE_UNKNOWN = 0;             // never sent: zero stays the "not good" value
+  BECAME_VALID = 1;
+  BECAME_INVALID = 2;
+  BECAME_FRESH = 3;
+  BECAME_STALE = 4;
+  OWNER_WENT_OFFLINE = 5;
+  OWNER_BACK = 6;
 }
 
 message ParamEvent {

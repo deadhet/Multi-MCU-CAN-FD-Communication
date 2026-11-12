@@ -49,6 +49,22 @@ void uart_link_commit(tx_slot_t slot, uint32_t len)
     USART3->CR1 |= USART_CR1_TXEIE;
 }
 
+void uart_link_attach_queue(uint8_t *entries, uint32_t entry_size)
+{
+    tx_slots_attach_queue(entries, entry_size);
+}
+
+uint8_t *uart_link_queue_begin(uint32_t *size)
+{
+    return tx_slots_queue_begin(size);
+}
+
+void uart_link_queue_commit(uint32_t len)
+{
+    tx_slots_queue_commit(len);
+    USART3->CR1 |= USART_CR1_TXEIE; /* Wake the mover, as uart_link_commit() */
+}
+
 void uart_link_get_stats(tx_slots_stats_t *out)
 {
     tx_slots_get_stats(out);

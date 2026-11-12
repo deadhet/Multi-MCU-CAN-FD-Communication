@@ -49,12 +49,13 @@ typedef enum _monitor_LinkState {
 /* Changes, sent the moment MCU1 sees them, grouped: one event names every parameter (or node)
  that made the same change in the same 5 ms run, as a bit mask (bit n-1 = Pn or MCUn). */
 typedef enum _monitor_ParamChange {
-    monitor_ParamChange_BECAME_VALID = 0,
-    monitor_ParamChange_BECAME_INVALID = 1,
-    monitor_ParamChange_BECAME_FRESH = 2,
-    monitor_ParamChange_BECAME_STALE = 3,
-    monitor_ParamChange_OWNER_WENT_OFFLINE = 4,
-    monitor_ParamChange_OWNER_BACK = 5
+    monitor_ParamChange_CHANGE_UNKNOWN = 0, /* never sent: zero stays the "not good" value */
+    monitor_ParamChange_BECAME_VALID = 1,
+    monitor_ParamChange_BECAME_INVALID = 2,
+    monitor_ParamChange_BECAME_FRESH = 3,
+    monitor_ParamChange_BECAME_STALE = 4,
+    monitor_ParamChange_OWNER_WENT_OFFLINE = 5,
+    monitor_ParamChange_OWNER_BACK = 6
 } monitor_ParamChange;
 
 /* Struct definitions */
@@ -178,7 +179,7 @@ extern "C" {
 #define _monitor_LinkState_MAX monitor_LinkState_SELF
 #define _monitor_LinkState_ARRAYSIZE ((monitor_LinkState)(monitor_LinkState_SELF+1))
 
-#define _monitor_ParamChange_MIN monitor_ParamChange_BECAME_VALID
+#define _monitor_ParamChange_MIN monitor_ParamChange_CHANGE_UNKNOWN
 #define _monitor_ParamChange_MAX monitor_ParamChange_OWNER_BACK
 #define _monitor_ParamChange_ARRAYSIZE ((monitor_ParamChange)(monitor_ParamChange_OWNER_BACK+1))
 

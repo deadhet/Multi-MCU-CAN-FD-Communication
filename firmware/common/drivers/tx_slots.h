@@ -11,10 +11,15 @@
  * its way out is finished ("the DMA is empty"), the mover takes the pending frame that was handed
  * over first, so frames leave in the order they were made.
  *
- * Contexts: the writer calls tx_slots_begin() and tx_slots_commit(); the mover calls
+ * Events are different: each one records a change and must not be replaced by the next. They
+ * wait in a queue (a ring of fixed-size entries) and go out in the same hand-over order as the
+ * slots' frames. When the queue is full, a new event is refused (and counted by the caller).
+ *
+ * Contexts: the writer calls the *_begin() and *_commit() functions; the mover calls
  * tx_slots_done() and tx_slots_next(). The mover is an interrupt, which the main loop never
- * interrupts. The one thing both can try at the same moment is taking a pending frame; that is
- * an atomic exchange, so exactly one of them gets it. No interrupt is ever masked. */
+ * interrupts. The one thing both can try at the same moment is taking a pending slot frame;
+ * that is an atomic exchange, so exactly one of them gets it. The queue needs none: only the
+ * writer moves its tail, only the mover its head. No interrupt is ever masked. */
 #ifndef TX_SLOTS_H
 #define TX_SLOTS_H
 
@@ -30,9 +35,14 @@ typedef enum {
 typedef struct {
     uint32_t handed[TX_SLOT_COUNT];   /* Frames handed over by the writer */
     uint32_t replaced[TX_SLOT_COUNT]; /* Pending frames taken back unsent, for a newer one */
-    uint32_t sent;                    /* Frames the mover finished */
+    uint32_t queued;                  /* Events handed over to the queue */
+    uint32_t queue_full;              /* Events refused: the queue was full */
+    uint32_t sent;                    /* Frames the mover finished, events included */
     uint32_t bytes;                   /* Their bytes */
 } tx_slots_stats_t;
+
+/* Entries in the event queue: a power of two. */
+#define TX_QUEUE_ENTRIES 16U
 
 /* Forgets every slot and frame. Call before tx_slots_attach(), with the mover stopped. */
 void tx_slots_init(void);
@@ -48,12 +58,23 @@ uint8_t *tx_slots_begin(tx_slot_t slot, uint32_t *size, bool *replaced);
 /* Writer. Hands over the len bytes written since tx_slots_begin() for this slot. */
 void tx_slots_commit(tx_slot_t slot, uint32_t len);
 
+/* Gives the event queue its buffer: TX_QUEUE_ENTRIES entries of entry_size bytes each, one after
+ * the other. Before the first tx_slots_queue_begin(). */
+void tx_slots_attach_queue(uint8_t *entries, uint32_t entry_size);
+
+/* Writer. The entry to write the next event into; *size is its size. NULL, counted in
+ * queue_full, if the queue is full or has no buffer. */
+uint8_t *tx_slots_queue_begin(uint32_t *size);
+
+/* Writer. Hands over the len bytes written since tx_slots_queue_begin(). */
+void tx_slots_queue_commit(uint32_t len);
+
 /* Mover. The frame from tx_slots_next() is completely handed to the hardware: its buffer is free
  * again. Does nothing if no frame was being sent. */
 void tx_slots_done(void);
 
-/* Mover. Takes the pending frame handed over first and marks it as being sent. False if nothing
- * is pending. */
+/* Mover. Takes the pending frame or queued event handed over first and marks it as being sent.
+ * False if nothing is waiting. */
 bool tx_slots_next(const uint8_t **data, uint32_t *len);
 
 void tx_slots_get_stats(tx_slots_stats_t *out);

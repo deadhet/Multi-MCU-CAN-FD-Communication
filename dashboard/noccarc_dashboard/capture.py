@@ -20,6 +20,7 @@ from collections import Counter
 from pathlib import Path
 
 from . import framing, monitor_pb2
+from .events import describe, members, replay_check
 from .uptime import UptimeTracker, format_uptime
 
 
@@ -64,6 +65,69 @@ def read_log(path: Path) -> dict[int, dict]:
             reports[t]["health"] = int(m.group(1))
             reports[t]["online"] = int(m.group(2))
     return reports
+
+
+_LOG_CHANGE = re.compile(r"MCU1 t=(\d+) (?:diag (n\d|self) ([A-Z_]+)|db OWNER_(OFFLINE|ONLINE)((?: \d+)+))")
+Item = tuple[int, tuple]  # (time ms, what changed)
+
+
+def log_changes(path: Path) -> list[Item]:
+    """MCU1's own log lines for link, restart, own-state and owner-offline changes, one item
+    per node or parameter."""
+    items: list[Item] = []
+    for line in path.read_text(errors="replace").splitlines():
+        if not (m := _LOG_CHANGE.match(line)):
+            continue
+        t = int(m.group(1))
+        if m.group(2) == "self":
+            items.append((t, ("own", m.group(3))))
+        elif m.group(2):
+            node, word = int(m.group(2)[1:]), m.group(3)
+            items.append((t, ("restart", node) if word == "RESTART" else ("link", node, word)))
+        else:
+            items += [(t, ("owner", m.group(4), int(p))) for p in m.group(5).split()]
+    return items
+
+
+def event_changes(events: list[monitor_pb2.Event]) -> list[Item]:
+    """The same kinds of change, from the EVENT frames."""
+    items: list[Item] = []
+    for e in events:
+        kind = e.WhichOneof("body")
+        if kind == "own_state":
+            items.append((e.time_ms, ("own", monitor_pb2.NodeState.Name(e.own_state))))
+        elif kind == "node":
+            restarted = e.node.WhichOneof("change") == "restarted"
+            link = monitor_pb2.LinkState.Name(e.node.link)
+            items += [(e.time_ms, ("restart", n) if restarted else ("link", n, link)) for n in members(e.node.nodes)]
+        elif kind == "param" and e.param.change in (monitor_pb2.OWNER_WENT_OFFLINE, monitor_pb2.OWNER_BACK):
+            word = "OFFLINE" if e.param.change == monitor_pb2.OWNER_WENT_OFFLINE else "ONLINE"
+            items += [(e.time_ms, ("owner", word, p)) for p in members(e.param.params)]
+    return items
+
+
+def _subject(what: tuple) -> tuple:
+    """What changed, without the new value: ("link", 3, "LATE") -> ("link", 3)."""
+    return what[:2] if what[0] in ("link", "owner") else what[:1] if what[0] == "own" else what
+
+
+def match_changes(logged: list[Item], sent: list[Item], start: int, end: int, window: int = 10,
+                  step: int = 5) -> tuple[list[str], list[str]]:
+    """Each change MCU1 logged between start and end must have its event at most window ms
+    later, and each event a logged change at most window ms earlier. A logged state that was
+    replaced by the next one within one event step (5 ms) can be skipped by design: MCU1 looks
+    every 5 ms and reports what it sees. Returns (problems, skipped by design)."""
+    problems, skipped = [], []
+    for t, what in logged:
+        if start <= t <= end - window and not any(w == what and t <= te <= t + window for te, w in sent):
+            if any(_subject(w) == _subject(what) and t <= t2 <= t + step and w != what for t2, w in logged):
+                skipped.append(f"t={t} {what}, replaced within {step} ms")
+            else:
+                problems.append(f"logged at t={t}, no event: {what}")
+    for te, what in sent:
+        if not any(w == what and t <= te <= t + window for t, w in logged):
+            problems.append(f"event at t={te}, not in the log: {what}")
+    return problems, skipped
 
 
 def main() -> int:
@@ -126,7 +190,30 @@ def main() -> int:
         print(f"config: protocol {c.protocol_version}, firmware {c.firmware}, {c.arbitration_bps} / {c.data_bps} bit/s, "
               f"BRS {c.brs}, {c.node_count} nodes, {c.param_count} parameters, names {c.params[0].name}..{c.params[-1].name}")
 
-    ok = bool(snaps) and not errors and lost == 0
+    events = [f.message for f in frames if f.type == framing.EVENT]
+    if events:
+        print(f"events ({len(events)}):")
+        for e in events[:80]:
+            print(f"  {describe(e)}")
+    checked, replay_problems = replay_check(frames)
+    for p in replay_problems[:20]:
+        print(f"EVENT REPLAY: {p}")
+    print(f"events replayed between snapshots: {checked} snapshots checked, {len(replay_problems)} differences")
+
+    ok = bool(snaps) and not errors and lost == 0 and checked > 0 and not replay_problems
+    if args.compare_log and uptime.restarts == 0 and snaps:
+        start = min([s.message.uptime_ms for s in snaps] + [e.time_ms for e in events])
+        end = snaps[-1].message.uptime_ms
+        change_problems, by_design = match_changes(log_changes(args.compare_log), event_changes(events), start, end)
+        for p in change_problems[:20]:
+            print(f"EVENT vs LOG: {p}")
+        for p in by_design:
+            print(f"  not reported by design (shorter than one 5 ms look): {p}")
+        print(f"events vs {args.compare_log.name} (links, restarts, own state, owner offline): "
+              f"{len(change_problems)} differences, {len(by_design)} short states not reported by design")
+        ok = ok and not change_problems
+    elif args.compare_log:
+        print("events vs log: skipped (MCU1 restarted during the capture; its log starts again at t=0)")
     if args.compare_log:
         reports = read_log(args.compare_log)
         compared = mismatches = 0

@@ -27,6 +27,9 @@
 #define WIRE_MAX(payload_max) (COBS_MAX_ENCODED(FRAME_HEADER + (payload_max) + FRAME_CRC) + 1U)
 #define SNAPSHOT_WIRE_MAX     WIRE_MAX(monitor_Snapshot_size)
 #define CONFIG_WIRE_MAX       WIRE_MAX(monitor_Config_size)
+#define EVENT_WIRE_MAX        WIRE_MAX(monitor_Event_size)
+
+#define LINK_STATES 8U /* monitor_LinkState values 0-7 (UNKNOWN-SELF) */
 
 /* The schema's enums are numbered like ours, so values are copied without a table. */
 _Static_assert((int)monitor_Validity_NEVER_RECEIVED == (int)PARAM_NEVER_RECEIVED, "validity");
@@ -42,21 +45,35 @@ _Static_assert((int)monitor_LinkState_ONLINE == (int)DIAG_ONLINE, "link state");
 _Static_assert((int)monitor_LinkState_OFFLINE == (int)DIAG_OFFLINE, "link state");
 _Static_assert((int)monitor_LinkState_DATA_INVALID == (int)DIAG_DATA_INVALID, "link state");
 _Static_assert(PAYLOAD_MAX < 65536U, "frame lengths must stay small");
+_Static_assert((int)monitor_LinkState_SELF == (int)(LINK_STATES - 1U), "link states");
+_Static_assert(PARAM_COUNT <= 32U && COMM_NODE_COUNT <= 32U, "event masks are 32 bits");
 
 /* The UART buffers, in .noinit RAM (Het, 12 Nov 2026): start-up does not clear them, and a DMA
  * can reach them. Each is completely written before it is read. Static, not on the stack: the
  * structs are close to 1 KB each.
  *   snapshot, config     the message, filled field by field, then encoded into frame
  *   frame                header + Protobuf payload + CRC, before COBS
- *   *_wire               the two slot buffers per kind (drivers/tx_slots.h): COBS + 0x00 */
+ *   *_wire               the two slot buffers per kind (drivers/tx_slots.h): COBS + 0x00
+ *   event_wire           the event queue's entries */
 static monitor_Snapshot snapshot NOINIT_RAM;
 static monitor_Config config NOINIT_RAM;
 static uint8_t frame[FRAME_MAX] NOINIT_RAM;
 static uint8_t snapshot_wire[2][SNAPSHOT_WIRE_MAX] NOINIT_RAM;
 static uint8_t config_wire[2][CONFIG_WIRE_MAX] NOINIT_RAM;
+static uint8_t event_wire[TX_QUEUE_ENTRIES][EVENT_WIRE_MAX] NOINIT_RAM;
 
-static uint32_t uart_seq; /* Last sequence handed over; the first frame is 1 */
+static uint32_t uart_seq; /* Last sequence used; the first frame is 1 */
 static monitor_stats_t stats;
+
+/* What the previous monitor_send_events() saw; a difference is an event. */
+static struct {
+    uint8_t validity[PARAM_COUNT];
+    uint8_t freshness[PARAM_COUNT];
+    bool owner_offline[PARAM_COUNT];
+    uint8_t link[COMM_NODE_COUNT];
+    uint32_t restarts[COMM_NODE_COUNT];
+    uint8_t own_state;
+} seen;
 
 static void put_u16_le(uint8_t *p, uint16_t v)
 {
@@ -86,12 +103,13 @@ static uint8_t *begin_frame(tx_slot_t slot, uint32_t *size)
     return out;
 }
 
-/* Step 2: encodes msg, frames it into out (size bytes) and hands it over. Returns the bytes on
- * the wire, or 0 if it could not be encoded (nothing is handed over). The sequence advances for
- * every frame handed over: a gap at the host is a replaced frame (counted in frames_skipped) or
- * bytes lost on the way. */
-static uint32_t send_frame(tx_slot_t slot, uint8_t *out, uint32_t size, uint8_t type,
-                           const pb_msgdesc_t *fields, const void *msg)
+/* Step 2: encodes msg and frames it into out (size bytes), with the next sequence number.
+ * Returns the bytes on the wire, or 0 if it could not be encoded. The caller hands the frame
+ * over and then advances uart_seq. The sequence advances for every frame handed over, and for
+ * every event the full queue refused: a gap at the host is a frame counted in frames_skipped
+ * (replaced, or refused) or bytes lost on the way. */
+static uint32_t build_frame(uint8_t *out, uint32_t size, uint8_t type, const pb_msgdesc_t *fields,
+                            const void *msg)
 {
     pb_ostream_t stream = pb_ostream_from_buffer(&frame[FRAME_HEADER], PAYLOAD_MAX);
 
@@ -111,10 +129,42 @@ static uint32_t send_frame(tx_slot_t slot, uint8_t *out, uint32_t size, uint8_t 
     }
     uint32_t n = cobs_encode(frame, len, out);
     out[n++] = 0x00U;
-
-    uart_link_commit(slot, n);
-    uart_seq++;
     return n;
+}
+
+/* Builds a SNAPSHOT or CONFIG frame into its slot buffer and hands it over. */
+static uint32_t send_frame(tx_slot_t slot, uint8_t *out, uint32_t size, uint8_t type,
+                           const pb_msgdesc_t *fields, const void *msg)
+{
+    uint32_t n = build_frame(out, size, type, fields, msg);
+
+    if (n != 0U) {
+        uart_link_commit(slot, n);
+        uart_seq++;
+    }
+    return n;
+}
+
+/* Builds one EVENT frame into the queue and hands it over. If the queue is full the event is
+ * lost: it still uses up its sequence number and counts in frames_skipped, so the host sees the
+ * gap explained. The next snapshot shows the state anyway. */
+static void send_event(const monitor_Event *e)
+{
+    uint32_t size = 0U;
+    uint8_t *out = uart_link_queue_begin(&size);
+
+    if (out == NULL) {
+        stats.events_dropped++;
+        stats.skipped++;
+        uart_seq++;
+        return;
+    }
+    uint32_t n = build_frame(out, size, MONITOR_FRAME_EVENT, monitor_Event_fields, e);
+    if (n != 0U) {
+        uart_link_queue_commit(n);
+        uart_seq++;
+        stats.events++;
+    }
 }
 
 void monitor_init(void)
@@ -123,6 +173,19 @@ void monitor_init(void)
     stats = (monitor_stats_t){ 0 };
     uart_link_attach(TX_SLOT_SNAPSHOT, snapshot_wire[0], snapshot_wire[1], SNAPSHOT_WIRE_MAX);
     uart_link_attach(TX_SLOT_CONFIG, config_wire[0], config_wire[1], CONFIG_WIRE_MAX);
+    uart_link_attach_queue(&event_wire[0][0], EVENT_WIRE_MAX);
+
+    /* Events report changes from the boot state: nothing received, every peer unknown. */
+    for (uint32_t i = 0U; i < PARAM_COUNT; i++) {
+        seen.validity[i] = (uint8_t)PARAM_NEVER_RECEIVED;
+        seen.freshness[i] = (uint8_t)PARAM_STALE;
+        seen.owner_offline[i] = false;
+    }
+    for (uint32_t n = 0U; n < COMM_NODE_COUNT; n++) {
+        seen.link[n] = (uint8_t)DIAG_UNKNOWN;
+        seen.restarts[n] = 0U;
+    }
+    seen.own_state = (uint8_t)COMM_STATE_BOOT;
 }
 
 static void fill_parameter(monitor_Parameter *p, const param_entry_t *e)
@@ -277,6 +340,99 @@ bool monitor_send_config(const monitor_periods_t *periods)
     }
     stats.configs++;
     return true;
+}
+
+static void send_node_event(uint32_t now_ms, uint32_t nodes, bool restarted, uint8_t link)
+{
+    monitor_Event e = monitor_Event_init_zero;
+
+    e.time_ms = now_ms;
+    e.which_body = monitor_Event_node_tag;
+    e.body.node.nodes = nodes;
+    if (restarted) {
+        e.body.node.which_change = monitor_NodeEvent_restarted_tag;
+        e.body.node.change.restarted = true;
+    } else {
+        e.body.node.which_change = monitor_NodeEvent_link_tag;
+        e.body.node.change.link = (monitor_LinkState)link;
+    }
+    send_event(&e);
+}
+
+uint32_t monitor_send_events(const monitor_view_t *view)
+{
+    uint32_t before = stats.events + stats.events_dropped;
+    monitor_Event e = monitor_Event_init_zero;
+
+    /* Nodes first, as a cause comes before its effects on the parameters. */
+    uint32_t restarted = 0U;
+    uint32_t moved_to[LINK_STATES] = { 0U };
+    for (uint8_t node = 1U; node <= COMM_NODE_COUNT; node++) {
+        const diag_peer_t *p = &view->peers[node - 1U];
+        uint32_t bit = 1UL << (node - 1U);
+        if ((node == NODE_ID) || ((uint32_t)p->link >= LINK_STATES)) {
+            continue;
+        }
+        if (p->restarts != seen.restarts[node - 1U]) {
+            restarted |= bit;
+            seen.restarts[node - 1U] = p->restarts;
+        }
+        if ((uint8_t)p->link != seen.link[node - 1U]) {
+            moved_to[p->link] |= bit;
+            seen.link[node - 1U] = (uint8_t)p->link;
+        }
+    }
+    if (restarted != 0U) {
+        send_node_event(view->now_ms, restarted, true, 0U);
+    }
+    for (uint8_t link = 0U; link < LINK_STATES; link++) {
+        if (moved_to[link] != 0U) {
+            send_node_event(view->now_ms, moved_to[link], false, link);
+        }
+    }
+    if ((uint8_t)view->own_state != seen.own_state) {
+        e.time_ms = view->now_ms;
+        e.which_body = monitor_Event_own_state_tag;
+        e.body.own_state = (monitor_NodeState)view->own_state;
+        send_event(&e);
+        seen.own_state = (uint8_t)view->own_state;
+    }
+
+    /* Parameters, one event per kind of change, each naming every parameter that made it. */
+    uint32_t changed[monitor_ParamChange_OWNER_BACK + 1] = { 0U };
+    for (uint32_t i = 0U; i < PARAM_COUNT; i++) {
+        const param_entry_t *pe = &view->params[i];
+        uint32_t bit = 1UL << i;
+        if (pe->owner_offline != seen.owner_offline[i]) {
+            changed[pe->owner_offline ? monitor_ParamChange_OWNER_WENT_OFFLINE : monitor_ParamChange_OWNER_BACK] |= bit;
+            seen.owner_offline[i] = pe->owner_offline;
+        }
+        if ((uint8_t)pe->validity != seen.validity[i]) {
+            /* Not VALID any more is INVALID, for the host (NEVER_RECEIVED cannot come back). */
+            changed[(pe->validity == PARAM_VALID) ? monitor_ParamChange_BECAME_VALID : monitor_ParamChange_BECAME_INVALID] |= bit;
+            seen.validity[i] = (uint8_t)pe->validity;
+        }
+        if ((uint8_t)pe->freshness != seen.freshness[i]) {
+            changed[(pe->freshness == PARAM_FRESH) ? monitor_ParamChange_BECAME_FRESH : monitor_ParamChange_BECAME_STALE] |= bit;
+            seen.freshness[i] = (uint8_t)pe->freshness;
+        }
+    }
+    static const monitor_ParamChange order[] = {
+        monitor_ParamChange_OWNER_WENT_OFFLINE, monitor_ParamChange_OWNER_BACK,
+        monitor_ParamChange_BECAME_VALID,       monitor_ParamChange_BECAME_INVALID,
+        monitor_ParamChange_BECAME_FRESH,       monitor_ParamChange_BECAME_STALE,
+    };
+    for (uint32_t k = 0U; k < sizeof(order) / sizeof(order[0]); k++) {
+        if (changed[order[k]] != 0U) {
+            e = (monitor_Event)monitor_Event_init_zero;
+            e.time_ms = view->now_ms;
+            e.which_body = monitor_Event_param_tag;
+            e.body.param.change = order[k];
+            e.body.param.params = changed[order[k]];
+            send_event(&e);
+        }
+    }
+    return (stats.events + stats.events_dropped) - before;
 }
 
 void monitor_get_stats(monitor_stats_t *out)

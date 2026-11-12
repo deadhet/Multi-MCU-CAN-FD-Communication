@@ -33,6 +33,11 @@ uint8_t *uart_link_begin(tx_slot_t slot, uint32_t *size, bool *replaced);
 /* Hands over the len bytes written since uart_link_begin() and returns at once. */
 void uart_link_commit(tx_slot_t slot, uint32_t len);
 
+/* The event queue (tx_slots.h): events are never replaced; a full queue refuses a new one. */
+void uart_link_attach_queue(uint8_t *entries, uint32_t entry_size);
+uint8_t *uart_link_queue_begin(uint32_t *size); /* NULL if the queue is full */
+void uart_link_queue_commit(uint32_t len);
+
 void uart_link_get_stats(tx_slots_stats_t *out);
 
 #endif

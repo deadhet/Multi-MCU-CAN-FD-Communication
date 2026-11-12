@@ -68,6 +68,21 @@ void uart_link_commit(tx_slot_t slot, uint32_t len)
     }
 }
 
+void uart_link_attach_queue(uint8_t *entries, uint32_t entry_size)
+{
+    tx_slots_attach_queue(entries, entry_size);
+}
+
+uint8_t *uart_link_queue_begin(uint32_t *size) { return tx_slots_queue_begin(size); }
+
+void uart_link_queue_commit(uint32_t len)
+{
+    tx_slots_queue_commit(len);
+    if (!link_busy) {
+        drain();
+    }
+}
+
 void uart_link_get_stats(tx_slots_stats_t *out) { tx_slots_get_stats(out); }
 
 /* As uart_link_init() then monitor_init() on MCU1. */
@@ -440,6 +455,128 @@ static void test_worst_case(void)
     printf("  worst snapshot: %u payload bytes, %u on the wire\n", (unsigned)len, (unsigned)captured_len);
 }
 
+/* The next frame must be an EVENT; returns it decoded. */
+static monitor_Event next_event(uint32_t *pos)
+{
+    monitor_Event e = monitor_Event_init_zero;
+    uint32_t seq = 0U, len = 0U;
+    uint8_t type = 0U, payload[64];
+
+    CHECK(take_frame(pos, &type, &seq, payload, &len) && type == MONITOR_FRAME_EVENT);
+    pb_istream_t in = pb_istream_from_buffer(payload, len);
+    CHECK(pb_decode(&in, monitor_Event_fields, &e));
+    return e;
+}
+
+static int is_node_event(const monitor_Event *e, uint32_t nodes, bool restarted, monitor_LinkState link)
+{
+    if ((e->which_body != monitor_Event_node_tag) || (e->body.node.nodes != nodes)) {
+        return 0;
+    }
+    if (restarted) {
+        return (e->body.node.which_change == monitor_NodeEvent_restarted_tag) && e->body.node.change.restarted;
+    }
+    return (e->body.node.which_change == monitor_NodeEvent_link_tag) && (e->body.node.change.link == link);
+}
+
+static int is_param_event(const monitor_Event *e, monitor_ParamChange change, uint32_t params)
+{
+    return (e->which_body == monitor_Event_param_tag) && (e->body.param.change == change)
+        && (e->body.param.params == params);
+}
+
+static void test_events(void)
+{
+    printf("EVENTS: changes since the boot state, grouped by kind, in order; nothing twice; queue full\n");
+    monitor_view_t view;
+    uint32_t pos = 0U;
+
+    /* From the boot state to make_view(): n3 restarted once, n2 ONLINE, n3 OFFLINE, own state
+     * OPERATIONAL; P16's owner offline; P1-P5, P11, P16 VALID; P6 INVALID; P1-P6, P11 FRESH. */
+    make_view(&view);
+    start_link();
+    CHECK(monitor_send_events(&view) == 8U);
+    monitor_Event e = next_event(&pos);
+    CHECK(e.time_ms == 1005U && is_node_event(&e, 0x4U, true, 0));
+    e = next_event(&pos);
+    CHECK(is_node_event(&e, 0x2U, false, monitor_LinkState_ONLINE));
+    e = next_event(&pos);
+    CHECK(is_node_event(&e, 0x4U, false, monitor_LinkState_OFFLINE));
+    e = next_event(&pos);
+    CHECK(e.which_body == monitor_Event_own_state_tag && e.body.own_state == monitor_NodeState_OPERATIONAL);
+    e = next_event(&pos);
+    CHECK(is_param_event(&e, monitor_ParamChange_OWNER_WENT_OFFLINE, 0x8000U));
+    e = next_event(&pos);
+    CHECK(is_param_event(&e, monitor_ParamChange_BECAME_VALID, 0x841FU));
+    e = next_event(&pos);
+    CHECK(is_param_event(&e, monitor_ParamChange_BECAME_INVALID, 0x20U));
+    e = next_event(&pos);
+    CHECK(is_param_event(&e, monitor_ParamChange_BECAME_FRESH, 0x43FU));
+    CHECK(pos == captured_len);
+
+    /* Same view again: nothing changed, nothing sent. */
+    CHECK(monitor_send_events(&view) == 0U && pos == captured_len);
+
+    /* n2 and n4 go OFFLINE in the same run: one event naming both. n3 restarts again and is
+     * RECOVERING; P16's owner is back and P16 FRESH. */
+    view.now_ms = 1010U;
+    view.peers[1].link = DIAG_OFFLINE;
+    view.peers[3].link = DIAG_OFFLINE;
+    view.peers[2].link = DIAG_RECOVERING;
+    view.peers[2].restarts = 2U;
+    view.params[15].owner_offline = false;
+    view.params[15].freshness = PARAM_FRESH;
+    CHECK(monitor_send_events(&view) == 5U);
+    e = next_event(&pos);
+    CHECK(e.time_ms == 1010U && is_node_event(&e, 0x4U, true, 0));
+    e = next_event(&pos); /* Link events in link-state order: OFFLINE (3) before RECOVERING (4) */
+    CHECK(is_node_event(&e, 0xAU, false, monitor_LinkState_OFFLINE));
+    e = next_event(&pos);
+    CHECK(is_node_event(&e, 0x4U, false, monitor_LinkState_RECOVERING));
+    e = next_event(&pos);
+    CHECK(is_param_event(&e, monitor_ParamChange_OWNER_BACK, 0x8000U));
+    e = next_event(&pos);
+    CHECK(is_param_event(&e, monitor_ParamChange_BECAME_FRESH, 0x8000U));
+    CHECK(pos == captured_len);
+
+    /* Queue full: the link is busy and 20 events come in one run. 16 wait, 4 are lost; their
+     * sequence numbers are used up and counted, so the next snapshot explains the gap. */
+    captured_len = 0U;
+    pos = 0U;
+    link_busy = true;
+    for (uint32_t i = 0U; i < PARAM_COUNT; i++) {
+        view.params[i].validity = PARAM_INVALID; /* one change per parameter: still one event */
+    }
+    CHECK(monitor_send_events(&view) == 1U);
+    monitor_stats_t st;
+    monitor_get_stats(&st);
+    uint32_t seq_before = 13U + 1U; /* 13 events so far, this one is 14 */
+    for (uint32_t k = 0U; k < 19U; k++) {
+        view.now_ms += 5U;
+        view.own_state = (k % 2U == 0U) ? COMM_STATE_RESYNCING : COMM_STATE_OPERATIONAL;
+        CHECK(monitor_send_events(&view) == 1U);
+    }
+    monitor_get_stats(&st);
+    CHECK(st.events == 13U + TX_QUEUE_ENTRIES && st.events_dropped == 4U && st.skipped == 4U);
+    view.now_ms += 5U;
+    CHECK(monitor_send_snapshot(&view)); /* seq 14 + 20 = 34 */
+    link_busy = false;
+    drain();
+    uint32_t seq = 0U, len = 0U, last = 0U, skipped = 0U;
+    uint8_t type = 0U, payload[2048];
+    uint32_t events_seen = 0U;
+    while (take_frame(&pos, &type, &seq, payload, &len)) {
+        if (type == MONITOR_FRAME_EVENT) {
+            CHECK(seq == seq_before + events_seen); /* the 16 kept: 14-29, no gap among them */
+            events_seen++;
+        }
+        last = seq;
+    }
+    CHECK(events_seen == TX_QUEUE_ENTRIES);
+    CHECK(type == MONITOR_FRAME_SNAPSHOT && last == 34U);
+    CHECK(snapshot_uptime(payload, len, &skipped) == view.now_ms && skipped == 4U); /* 30-33 */
+}
+
 static void write_frames_file(const char *path)
 {
     monitor_view_t view;
@@ -449,6 +586,7 @@ static void write_frames_file(const char *path)
     start_link();
     CHECK(monitor_send_snapshot(&view));
     CHECK(monitor_send_config(&periods));
+    CHECK(monitor_send_events(&view) == 8U); /* As in test_events(): frames 3-10 */
     FILE *f = fopen(path, "wb");
     CHECK(f != NULL);
     if (f != NULL) {
@@ -464,6 +602,7 @@ int main(int argc, char **argv)
     test_config();
     test_latest_wins();
     test_health();
+    test_events();
     test_worst_case();
     if (argc > 1) {
         write_frames_file(argv[1]);

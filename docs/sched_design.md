@@ -29,6 +29,7 @@ Worst cases since boot, printed in the 1 s report:
   - `count`: how many of its runs started 1 ms or more late.
 - Source: the DWT cycle counter (`drivers/cycles.c`), 480 cycles per µs. It wraps every 8.9 s; only differences are used.
 - **Renode times are not the chip's.** Renode runs a fixed 100 million instructions per second, with no flash wait states or caches. The numbers compare tasks with each other; real times need the board.
+- **Renode's DWT clock is not confirmed.** `docs/setup_findings.md` notes, from Renode's source and untested, that its DWT model counts at 250 MHz; the conversion here assumes 480 cycles per µs. If so, Renode's µs figures are too small by up to 480/250 ≈ 1.9. The check (print the cycle count between two 1 s reports) is listed as a test to add.
 - The measurements change nothing about when tasks run. `test_sched.c` checks that: a copy switched to fixed-rate timing fails it.
 
 First readings, Renode, S1–S4 (12 Nov 2026):

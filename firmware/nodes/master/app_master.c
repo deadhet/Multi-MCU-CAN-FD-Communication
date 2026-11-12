@@ -42,6 +42,7 @@
 #define SNAPSHOT_FIRST_MS  5U
 #define CONFIG_PERIOD_MS   1000U
 #define CONFIG_FIRST_MS    0U
+#define EVENT_PERIOD_MS    5U /* As freshness and diag, which make the changes */
 
 #define TASK_COUNT (sizeof(tasks) / sizeof(tasks[0]))
 
@@ -132,6 +133,14 @@ static void snapshot_task(void)
     (void)monitor_send_snapshot(&view); /* A skipped snapshot is counted inside monitor/ */
 }
 
+/* §8.3 EVENT frames: every 5 ms, right after the freshness and diag tasks of the same pass,
+ * every change since the previous run, grouped. */
+static void event_task(void)
+{
+    collect_view();
+    (void)monitor_send_events(&view);
+}
+
 static void config_task(void)
 {
     static const monitor_periods_t periods = {
@@ -176,8 +185,8 @@ static void report_task(void)
     uart_debug_write("\n");
 
     /* UART link: frames and bytes fully handed to the USART, snapshots and CONFIGs handed over,
-     * frames replaced unsent by a newer one (§8.4, latest wins), frames not encoded, last and
-     * largest snapshot on the wire in bytes. */
+     * events queued and dropped (queue full), frames never sent (replaced or dropped, §8.4),
+     * frames not encoded, last and largest snapshot on the wire in bytes. */
     tx_slots_stats_t link;
     monitor_stats_t mon;
     uart_link_get_stats(&link);
@@ -190,6 +199,10 @@ static void report_task(void)
     uart_debug_write_u32(mon.snapshots);
     uart_debug_write(" cfg=");
     uart_debug_write_u32(mon.configs);
+    uart_debug_write(" ev=");
+    uart_debug_write_u32(mon.events);
+    uart_debug_write(" ev_drop=");
+    uart_debug_write_u32(mon.events_dropped);
     uart_debug_write(" skipped=");
     uart_debug_write_u32(mon.skipped);
     uart_debug_write(" enc_err=");
@@ -205,6 +218,7 @@ static sched_task_t tasks[] = {
     { param_task, PARAM_PERIOD_MS, 0U, "param" },
     { freshness_task, FRESHNESS_PERIOD_MS, 0U, "fresh" },
     { diag_task, DIAG_PERIOD_MS, 0U, "diag" },
+    { event_task, EVENT_PERIOD_MS, 0U, "event" },
     { heartbeat_task, HEARTBEAT_PERIOD_MS, HEARTBEAT_FIRST_MS - HEARTBEAT_PERIOD_MS, "hb" },
     { report_task, REPORT_PERIOD_MS, REPORT_FIRST_MS - REPORT_PERIOD_MS, "report" },
     { snapshot_task, SNAPSHOT_PERIOD_MS, SNAPSHOT_FIRST_MS - SNAPSHOT_PERIOD_MS, "snap" },

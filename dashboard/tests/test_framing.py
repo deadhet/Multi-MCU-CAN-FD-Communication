@@ -146,3 +146,21 @@ def test_newer_firmware_fields_are_ignored(c_frames):
     newer.ParseFromString(payload + unknown_field)
     assert newer.uptime_ms == original.uptime_ms and list(newer.params) == list(original.params)
     assert list(newer.nodes) == list(original.nodes) and newer.synced_count == original.synced_count
+
+
+def test_c_events_decode_in_python(c_frames):
+    """test_monitor.c's events from the boot state to its test view, in MCU1's order."""
+    from noccarc_dashboard.events import describe
+
+    events = [f for f in c_frames if f.type == framing.EVENT]
+    assert [f.sequence for f in events] == list(range(3, 11))
+    assert [describe(f.message) for f in events] == [
+        "t=1005 n3 RESTARTED",
+        "t=1005 n2 ONLINE",
+        "t=1005 n3 OFFLINE",
+        "t=1005 MCU1 OPERATIONAL",
+        "t=1005 P16 OWNER_WENT_OFFLINE",
+        "t=1005 P1 P2 P3 P4 P5 P11 P16 BECAME_VALID",
+        "t=1005 P6 BECAME_INVALID",
+        "t=1005 P1 P2 P3 P4 P5 P6 P11 BECAME_FRESH",
+    ]
