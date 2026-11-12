@@ -1,5 +1,6 @@
-/* PC test for the UART link: monitor/monitor.c, monitor/cobs.c, util/crc16.c and nanopb, built as
- * node 1. The UART is replaced by a capture buffer. Frames are decoded back here with nanopb,
+/* PC test for the UART link: monitor/monitor.c, monitor/cobs.c, util/crc16.c, drivers/tx_slots.c
+ * and nanopb, built as node 1. The USART is replaced by a capture buffer that the test empties
+ * the slots into, or not, to play a busy link. Frames are decoded back here with nanopb,
  * and written to build/host/monitor_frames.bin for the Python decoder test
  * (dashboard/tests/test_framing.py), which checks the same values.
  *   firmware/tests/host/run_host_tests.sh */
@@ -29,24 +30,54 @@ static int failures;
         }                                                                 \
     } while (0)
 
-/* ---- Stand-ins for the drivers ---- */
+/* ---- Stand-ins for the drivers: the real slots, a capture buffer as the USART ---- */
 static uint8_t captured[16384];
 static uint32_t captured_len;
-static uint32_t link_free = 4095U;
+static bool link_busy; /* True: the mover does not run, frames wait in the slots */
 
-uint32_t uart_link_free(void) { return link_free; }
-
-bool uart_link_send(const uint8_t *data, uint32_t len)
+/* The mover: every pending frame, oldest hand-over first, into the capture buffer. */
+static void drain(void)
 {
-    if ((len > link_free) || (captured_len + len > sizeof(captured))) {
-        return false;
+    const uint8_t *data = NULL;
+    uint32_t len = 0U;
+
+    while (tx_slots_next(&data, &len)) {
+        if (captured_len + len <= sizeof(captured)) {
+            memcpy(&captured[captured_len], data, len);
+            captured_len += len;
+        }
+        tx_slots_done();
     }
-    memcpy(&captured[captured_len], data, len);
-    captured_len += len;
-    return true;
 }
 
-void uart_link_get_stats(uart_link_stats_t *out) { memset(out, 0, sizeof(*out)); }
+void uart_link_attach(tx_slot_t slot, uint8_t *buf_a, uint8_t *buf_b, uint32_t size)
+{
+    tx_slots_attach(slot, buf_a, buf_b, size);
+}
+
+uint8_t *uart_link_begin(tx_slot_t slot, uint32_t *size, bool *replaced)
+{
+    return tx_slots_begin(slot, size, replaced);
+}
+
+void uart_link_commit(tx_slot_t slot, uint32_t len)
+{
+    tx_slots_commit(slot, len);
+    if (!link_busy) {
+        drain();
+    }
+}
+
+void uart_link_get_stats(tx_slots_stats_t *out) { tx_slots_get_stats(out); }
+
+/* As uart_link_init() then monitor_init() on MCU1. */
+static void start_link(void)
+{
+    tx_slots_init();
+    monitor_init();
+    captured_len = 0U;
+    link_busy = false;
+}
 uint32_t fdcan_nominal_bitrate(void) { return 500000U; }
 uint32_t fdcan_data_bitrate(void) { return 2000000U; }
 bool fdcan_brs_enabled(void) { return true; }
@@ -202,8 +233,7 @@ static void test_snapshot(void)
     printf("SNAPSHOT: frame, CRC, header, every field decoded back, P11 bytes as worked out by hand\n");
     monitor_view_t view;
     make_view(&view);
-    monitor_init();
-    captured_len = 0U;
+    start_link();
     CHECK(monitor_send_snapshot(&view));
     CHECK(captured_len > 0U && captured[captured_len - 1U] == 0U);
 
@@ -226,7 +256,7 @@ static void test_snapshot(void)
     pb_istream_t in = pb_istream_from_buffer(payload, len);
     CHECK(pb_decode(&in, monitor_Snapshot_fields, &s));
     CHECK(s.uptime_ms == 1005U && s.nodes_count == 4U && s.params_count == 20U);
-    CHECK(s.online_count == 2U && s.synced_count == 12U && s.snapshots_skipped == 0U);
+    CHECK(s.online_count == 2U && s.synced_count == 12U && s.frames_skipped == 0U);
 
     CHECK(s.nodes[0].node == 1U && s.nodes[0].link == monitor_LinkState_SELF);
     CHECK(s.nodes[0].reported_state == monitor_NodeState_OPERATIONAL && s.nodes[0].synced_count == 12U && s.nodes[0].error_summary == 2U);
@@ -274,39 +304,77 @@ static void test_config(void)
     CHECK(c.params[10].owner == 3U && c.params[4].sample_period_ms == 1000U && c.params[3].sample_period_ms == 500U);
 }
 
-static void test_overflow_rule(void)
+/* Decodes a snapshot payload; returns its uptime and sets *skipped, or returns 0xFFFFFFFF. */
+static uint32_t snapshot_uptime(const uint8_t *payload, uint32_t len, uint32_t *skipped)
 {
-    printf("Overflow rule (§8.4): snapshot needs its size + 256 free, CONFIG may use the reserve\n");
+    monitor_Snapshot s = monitor_Snapshot_init_zero;
+    pb_istream_t in = pb_istream_from_buffer(payload, len);
+
+    if (!pb_decode(&in, monitor_Snapshot_fields, &s)) {
+        return 0xFFFFFFFFU;
+    }
+    *skipped = s.frames_skipped;
+    return s.uptime_ms;
+}
+
+static void test_latest_wins(void)
+{
+    printf("Latest wins (§8.4): a busy link keeps only the newest frame of each kind; gaps = frames_skipped\n");
     monitor_view_t view;
-    make_view(&view);
-    monitor_init();
-    captured_len = 0U;
-    CHECK(monitor_send_snapshot(&view));
-    uint32_t snap_bytes = captured_len;
-
-    link_free = snap_bytes + MONITOR_RESERVE_BYTES - 1U;
-    CHECK(!monitor_send_snapshot(&view));
-    monitor_stats_t st;
-    monitor_get_stats(&st);
-    CHECK(st.skipped == 1U && st.snapshots == 1U && captured_len == snap_bytes);
-    /* The next snapshot reports snapshots_skipped = 1: 2 bytes more (tag and value). */
-    link_free = snap_bytes + 2U + MONITOR_RESERVE_BYTES - 1U;
-    CHECK(!monitor_send_snapshot(&view));
-    link_free = snap_bytes + 2U + MONITOR_RESERVE_BYTES;
-    CHECK(monitor_send_snapshot(&view));
-
-    /* The sequence counts queued frames only: no gap after a skipped snapshot. */
-    uint32_t pos = 0U, seq = 0U, len = 0U;
-    uint8_t type = 0U, payload[2048];
-    CHECK(take_frame(&pos, &type, &seq, payload, &len) && seq == 1U);
-    CHECK(take_frame(&pos, &type, &seq, payload, &len) && seq == 2U);
-
     const monitor_periods_t periods = { 10U, 100U, 100U };
-    link_free = 100U;
-    CHECK(!monitor_send_config(&periods));
+    uint32_t pos = 0U, seq = 0U, len = 0U, skipped = 0U;
+    uint8_t type = 0U, payload[2048];
+    monitor_stats_t st;
+
+    make_view(&view);
+    start_link();
+    link_busy = true;
+    view.now_ms = 100U;
+    CHECK(monitor_send_snapshot(&view)); /* seq 1 */
+    CHECK(monitor_send_config(&periods)); /* seq 2 */
+    view.now_ms = 200U;
+    CHECK(monitor_send_snapshot(&view)); /* seq 3: replaces 1 */
+    view.now_ms = 300U;
+    CHECK(monitor_send_snapshot(&view)); /* seq 4: replaces 3 */
+    CHECK(captured_len == 0U);
     monitor_get_stats(&st);
-    CHECK(st.refused == 1U && st.skipped == 2U);
-    link_free = 4095U;
+    CHECK(st.snapshots == 3U && st.configs == 1U && st.skipped == 2U);
+
+    /* The link frees up: CONFIG first (handed over first), then only the newest snapshot. It
+     * already counts the two replaced ones, which are exactly the sequence gap (1 and 3). */
+    link_busy = false;
+    drain();
+    CHECK(take_frame(&pos, &type, &seq, payload, &len) && type == MONITOR_FRAME_CONFIG && seq == 2U);
+    CHECK(take_frame(&pos, &type, &seq, payload, &len) && type == MONITOR_FRAME_SNAPSHOT && seq == 4U);
+    CHECK(snapshot_uptime(payload, len, &skipped) == 300U && skipped == 2U);
+    CHECK(pos == captured_len);
+
+    /* A snapshot made while the previous one is on its way out goes to the slot's other buffer:
+     * the one being sent is not touched, and nothing is replaced. */
+    captured_len = 0U;
+    link_busy = true;
+    view.now_ms = 400U;
+    CHECK(monitor_send_snapshot(&view)); /* seq 5 */
+    const uint8_t *out = NULL;
+    uint32_t out_len = 0U;
+    CHECK(tx_slots_next(&out, &out_len)); /* The mover starts seq 5... */
+    static uint8_t copy[2048];
+    memcpy(copy, out, out_len);
+    view.now_ms = 500U;
+    CHECK(monitor_send_snapshot(&view)); /* seq 6, while 5 is being sent */
+    CHECK(memcmp(out, copy, out_len) == 0);
+    memcpy(captured, out, out_len); /* ...and finishes it */
+    captured_len = out_len;
+    tx_slots_done();
+    drain();
+    pos = 0U;
+    CHECK(take_frame(&pos, &type, &seq, payload, &len) && seq == 5U);
+    CHECK(snapshot_uptime(payload, len, &skipped) == 400U && skipped == 2U);
+    CHECK(take_frame(&pos, &type, &seq, payload, &len) && seq == 6U);
+    CHECK(snapshot_uptime(payload, len, &skipped) == 500U && skipped == 2U);
+    monitor_get_stats(&st);
+    CHECK(st.skipped == 2U && st.encode_errors == 0U);
+    link_busy = false;
 }
 
 static void test_worst_case(void)
@@ -330,8 +398,7 @@ static void test_worst_case(void)
                                        .heartbeat_age_ms = 0xFFFFFFFFU, .missed = 0xFFFFFFFFU,
                                        .restarts = 0xFFFFFFFFU, .recoveries = 0xFFFFFFFFU, .data_age_ms = 0xFFFFFFFFU };
     }
-    monitor_init();
-    captured_len = 0U;
+    start_link();
     CHECK(monitor_send_snapshot(&view));
     uint32_t pos = 0U, seq = 0U, len = 0U;
     uint8_t type = 0U, payload[2048];
@@ -346,8 +413,7 @@ static void write_frames_file(const char *path)
     const monitor_periods_t periods = { 10U, 100U, 100U };
 
     make_view(&view);
-    monitor_init();
-    captured_len = 0U;
+    start_link();
     CHECK(monitor_send_snapshot(&view));
     CHECK(monitor_send_config(&periods));
     FILE *f = fopen(path, "wb");
@@ -363,7 +429,7 @@ int main(int argc, char **argv)
     test_cobs();
     test_snapshot();
     test_config();
-    test_overflow_rule();
+    test_latest_wins();
     test_worst_case();
     if (argc > 1) {
         write_frames_file(argv[1]);

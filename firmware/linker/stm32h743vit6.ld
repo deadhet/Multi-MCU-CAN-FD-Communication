@@ -1,4 +1,5 @@
-/* STM32H743VIT6: 2 MB flash, 128 KB DTCM. All data and the stack live in DTCM.
+/* STM32H743VIT6: 2 MB flash, 128 KB DTCM, 512 KB AXI SRAM. All data and the stack live in
+ * DTCM, except .noinit (util/noinit.h), which lives in AXI SRAM.
  * There is no heap section: dynamic allocation is not allowed in this project. */
 ENTRY(Reset_Handler)
 
@@ -6,8 +7,9 @@ MIN_STACK_SIZE = 4K;
 
 MEMORY
 {
-  FLASH (rx)  : ORIGIN = 0x08000000, LENGTH = 2048K
-  DTCM  (rw)  : ORIGIN = 0x20000000, LENGTH = 128K
+  FLASH    (rx)  : ORIGIN = 0x08000000, LENGTH = 2048K
+  DTCM     (rw)  : ORIGIN = 0x20000000, LENGTH = 128K
+  AXI_SRAM (rw)  : ORIGIN = 0x24000000, LENGTH = 512K
 }
 
 _estack = ORIGIN(DTCM) + LENGTH(DTCM);
@@ -48,6 +50,16 @@ SECTIONS
     . = ALIGN(4);
     _ebss = .;
   } > DTCM
+
+  /* Not cleared at start-up (no symbols for the startup code) and not in the flash image
+   * (NOLOAD): buffers that are always written before they are read, and that a DMA must reach.
+   * After a reset they hold old contents. */
+  .noinit (NOLOAD) :
+  {
+    . = ALIGN(4);
+    *(.noinit*)
+    . = ALIGN(4);
+  } > AXI_SRAM
 
   ASSERT(_ebss + MIN_STACK_SIZE <= _estack, "DTCM overflow: no room left for the stack")
 }

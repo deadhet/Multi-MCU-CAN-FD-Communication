@@ -233,6 +233,43 @@ static void test_restart(void)
     CHECK(peer(3U, 12000U).restarts == 2U);
 }
 
+static void test_uptime_wrap(void)
+{
+    const uint32_t top = 0xFFFFFFFFU; /* A peer's last uptime before its count wraps to 0 */
+
+    printf("peer's uptime passes 2^32 (49.7 days): a wrap, not a restart; 1000 ms slack, exactly\n");
+
+    /* Steady heartbeats across the peer's wrap: stays ONLINE, nothing logged. */
+    diag_init();
+    hb(2U, COMM_STATE_OPERATIONAL, top - 149U, 1000U);
+    hb(2U, COMM_STATE_OPERATIONAL, top - 49U, 1100U);
+    log_clear();
+    hb(2U, COMM_STATE_OPERATIONAL, 50U, 1200U); /* 100 ms on, through 2^32 */
+    hb(2U, COMM_STATE_OPERATIONAL, 150U, 1300U);
+    CHECK(link_of(2U) == DIAG_ONLINE && peer(2U, 1300U).restarts == 0U);
+    CHECK(!logged("RESTART") && !logged("RECOVERING"));
+
+    /* Silent for 2 s across its wrap, back without a reset: RECOVERING, as after any outage,
+     * but no restart. */
+    diag_init();
+    hb(2U, COMM_STATE_OPERATIONAL, top - 999U, 1000U);
+    diag_update(1400U, no_data);
+    CHECK(link_of(2U) == DIAG_OFFLINE);
+    hb(2U, COMM_STATE_OPERATIONAL, 1000U, 3000U); /* 2000 ms on, 2000 ms passed here */
+    CHECK(link_of(2U) == DIAG_RECOVERING && peer(2U, 3000U).restarts == 0U);
+
+    /* The slack: the step through 2^32 may exceed the time passed by 1000 ms (a wrap)... */
+    diag_init();
+    hb(2U, COMM_STATE_OPERATIONAL, top - 99U, 1000U);
+    hb(2U, COMM_STATE_OPERATIONAL, 1000U, 1100U); /* step 1100, passed 100 */
+    CHECK(peer(2U, 1100U).restarts == 0U && link_of(2U) == DIAG_ONLINE);
+    /* ...but not by 1001 ms (a restart). */
+    diag_init();
+    hb(2U, COMM_STATE_OPERATIONAL, top - 99U, 1000U);
+    hb(2U, COMM_STATE_OPERATIONAL, 1001U, 1100U); /* step 1101, passed 100 */
+    CHECK(peer(2U, 1100U).restarts == 1U && link_of(2U) == DIAG_RECOVERING);
+}
+
 static void test_old_heartbeat_then_boot(void)
 {
     printf("after OFFLINE: an old OPERATIONAL heartbeat, then a BOOT one (reset right after reconnect)\n");
@@ -431,6 +468,7 @@ int main(void)
     test_late_offline();
     test_recovery_needs_second_heartbeat();
     test_restart();
+    test_uptime_wrap();
     test_old_heartbeat_then_boot();
     test_no_heartbeat();
     test_data_invalid();

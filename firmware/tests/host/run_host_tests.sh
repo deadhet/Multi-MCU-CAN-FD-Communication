@@ -29,12 +29,19 @@ gcc -std=c11 -Wall -Wextra -Wshadow -Werror -O2 \
     -o "$out/test_diag"
 "$out/test_diag"
 
+gcc -std=c11 -Wall -Wextra -Wshadow -Werror -O2 \
+    -I"$repo/firmware/common" \
+    "$repo/firmware/tests/host/test_tx_slots.c" "$repo/firmware/common/drivers/tx_slots.c" \
+    -o "$out/test_tx_slots"
+"$out/test_tx_slots"
+
 nanopb="$repo/firmware/third_party/nanopb"
 gcc -std=c11 -Wall -Wextra -Wshadow -Werror -O2 \
     -I"$repo/firmware/common" -isystem "$nanopb" \
     -DNODE_ID=1 \
     "$repo/firmware/tests/host/test_monitor.c" "$repo/firmware/common/monitor/monitor.c" \
     "$repo/firmware/common/monitor/monitor.pb.c" "$repo/firmware/common/monitor/cobs.c" \
+    "$repo/firmware/common/drivers/tx_slots.c" \
     "$repo/firmware/common/util/crc16.c" "$repo/firmware/common/system_table.c" \
     "$nanopb/pb_common.c" "$nanopb/pb_encode.c" "$nanopb/pb_decode.c" \
     -lm -o "$out/test_monitor"

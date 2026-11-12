@@ -62,6 +62,7 @@ add_image(node1 1 ${FW}/nodes/master/app_master.c
   ${FW}/common/monitor/monitor.pb.c
   ${FW}/common/monitor/cobs.c
   ${FW}/common/drivers/uart_link.c
+  ${FW}/common/drivers/tx_slots.c
   ${FW}/third_party/nanopb/pb_common.c
   ${FW}/third_party/nanopb/pb_encode.c)
 target_include_directories(node1 SYSTEM PRIVATE ${FW}/third_party/nanopb)

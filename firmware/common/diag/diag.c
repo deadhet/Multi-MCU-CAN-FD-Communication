@@ -23,6 +23,21 @@
  * never changes it. */
 #define DATA_TIMEOUT_MS 350U
 
+/* Restart by uptime, wrap-safe (Het, 12 Nov 2026; see uptime_went_back()). How far a peer's
+ * uptime may step forward through 2^32 beyond the time that passed here and still count as a
+ * wrap. Without a restart, the step and the time passed differ only by:
+ *   - the ms rounding of the two clocks: up to 2 ms;
+ *   - how much later the previous heartbeat arrived after it was made than this one: under
+ *     about 350 ms while the peer stays connected (any longer and it went OFFLINE);
+ *   - the two crystals' rate difference: up to 100 ppm, 0.1 ms per second passed.
+ * 1000 ms covers all three, with room, for a peer that stays connected across its wrap, and the
+ * crystal drift of outages up to about 2.7 hours. Smaller: a real wrap could be counted as a
+ * restart. Larger: a real reset that lands within the slack before the peer's own wrap would be
+ * taken for a wrap. Both can only happen in the slack around the peer's wrap, once in 49.7 days;
+ * and when the peer comes back from an outage it goes RECOVERING either way, so there only the
+ * restart count and the RESTART line would be wrong. */
+#define UPTIME_SLACK_MS 1000U
+
 typedef struct {
     diag_link_t link;
     bool heard;          /* A heartbeat since boot */
@@ -112,6 +127,22 @@ void diag_init(void)
     own_state = COMM_STATE_BOOT;
 }
 
+/* True if a heartbeat's uptime shows that the peer restarted. The uptime is a uint32 ms count
+ * that passes 2^32 and starts again at 0 every 49.7 days, so a lower uptime means a restart or
+ * that wrap. A wrap moves the count forward, through 2^32, by about the time that passed here
+ * since the previous heartbeat; a restart leaves it far from that. A higher uptime is never a
+ * restart: a halted node resumes with a higher one, and old heartbeats delivered late from a
+ * Tx FIFO carry higher ones than the heartbeat before them. */
+static bool uptime_went_back(const peer_t *p, uint32_t uptime_ms, uint32_t rx_time_ms)
+{
+    if (uptime_ms >= p->last.uptime_ms) {
+        return false;
+    }
+    uint32_t step = uptime_ms - p->last.uptime_ms;        /* Forward, through 2^32 (unsigned) */
+    uint32_t passed = rx_time_ms - p->last_heartbeat_ms;  /* Here, by this node's clock */
+    return (step > passed) && ((step - passed) > UPTIME_SLACK_MS);
+}
+
 void diag_on_heartbeat(uint8_t node, const comm_heartbeat_t *hb, bool restart, uint32_t rx_time_ms)
 {
     if (!is_peer(node)) {
@@ -121,7 +152,7 @@ void diag_on_heartbeat(uint8_t node, const comm_heartbeat_t *hb, bool restart, u
 
     /* §7.3. comm/ flags a restart only while it still tracks the sender. After OFFLINE it has
      * forgotten it, so a reset during an outage (scenario S2) shows here as a lower uptime. */
-    bool restarted = restart || (p->heard && (hb->uptime_ms < p->last.uptime_ms));
+    bool restarted = restart || (p->heard && uptime_went_back(p, hb->uptime_ms, rx_time_ms));
     if (restarted) {
         p->restarts++;
         log_peer(node, rx_time_ms, "RESTART");

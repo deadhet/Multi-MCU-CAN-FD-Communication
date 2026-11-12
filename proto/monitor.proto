@@ -81,7 +81,8 @@ message Snapshot {
   uint32 uptime_ms = 1;           // MCU1's clock
   repeated NodeHealth nodes = 2;  // 4, MCU1 first
   repeated Parameter params = 3;  // 20, P1 first
-  uint32 snapshots_skipped = 4;   // §8.4 overflow policy, since boot
+  uint32 frames_skipped = 4;      // made but never sent: a newer one of the same kind replaced
+                                  // it while the link was busy (§8.4, latest wins), since boot
   uint32 online_count = 5;        // nodes ONLINE (or SELF) out of 4 (section 1)
   uint32 synced_count = 6;        // parameters VALID and FRESH at MCU1, out of 20 (section 1)
   uint32 health_percent = 7;      // network health, 0-100; formula in docs/uart_protocol.md

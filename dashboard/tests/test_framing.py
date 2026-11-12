@@ -96,7 +96,7 @@ def test_c_snapshot_decodes_in_python(c_frames):
     assert (snap_frame.type, snap_frame.sequence) == (framing.SNAPSHOT, 1)
     s = snap_frame.message
     assert (s.uptime_ms, len(s.nodes), len(s.params)) == (1005, 4, 20)
-    assert (s.online_count, s.synced_count, s.snapshots_skipped) == (2, 12, 0)
+    assert (s.online_count, s.synced_count, s.frames_skipped) == (2, 12, 0)
 
     n = s.nodes
     assert (n[0].node, n[0].link, n[0].reported_state) == (1, monitor_pb2.SELF, monitor_pb2.OPERATIONAL)

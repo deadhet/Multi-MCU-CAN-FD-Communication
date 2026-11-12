@@ -20,6 +20,7 @@ from collections import Counter
 from pathlib import Path
 
 from . import framing, monitor_pb2
+from .uptime import UptimeTracker, format_uptime
 
 
 def connect(host: str, port: int, timeout_s: float) -> socket.socket:
@@ -75,8 +76,9 @@ def main() -> int:
     buffer, synced_to_frames = b"", False
     frames: list[framing.Frame] = []
     errors: Counter[str] = Counter()
-    gaps = 0
+    missing = 0  # sequence numbers never received
     last_seq = None
+    uptime = UptimeTracker()
     while chunk := sock.recv(4096):
         buffer += chunk
         if not synced_to_frames:  # joined mid-stream: drop the partial frame before the first 0x00
@@ -91,16 +93,28 @@ def main() -> int:
             except framing.FrameError as err:
                 errors[err.reason] += 1
                 continue
-            if last_seq is not None and frame.sequence != last_seq + 1:
-                gaps += 1
+            if last_seq is not None:
+                missing += (frame.sequence - last_seq - 1) % (1 << 32)
             last_seq = frame.sequence
+            if frame.type == framing.SNAPSHOT:
+                uptime.on_snapshot(frame.sequence, frame.message.uptime_ms)
+            else:
+                uptime.on_frame(frame.sequence)
             frames.append(frame)
 
     kinds = Counter(f.type for f in frames)
     snaps = [f for f in frames if f.type == framing.SNAPSHOT]
     sizes = [f.wire_bytes for f in snaps]
+    # A missing sequence number is a frame MCU1 replaced with a newer one while the link was busy
+    # (counted in frames_skipped, §8.4) or one lost on the way. Only the second is a fault.
+    replaced = snaps[-1].message.frames_skipped - snaps[0].message.frames_skipped if snaps else 0
+    lost = missing - replaced
     print(f"frames {len(frames)}: snapshot {kinds[framing.SNAPSHOT]}, config {kinds[framing.CONFIG]}, "
-          f"event {kinds[framing.EVENT]}; errors {dict(errors) or 0}; sequence gaps {gaps}")
+          f"event {kinds[framing.EVENT]}; errors {dict(errors) or 0}; sequence numbers missing {missing} "
+          f"(replaced by MCU1 {replaced}, lost on the way {lost})")
+    if snaps:
+        print(f"MCU1 uptime at the last snapshot: {format_uptime(uptime.total_ms)} "
+              f"(count wrapped {uptime.wraps} times, restarts seen {uptime.restarts})")
     if sizes:
         print(f"snapshot on the wire: min {min(sizes)}, mean {sum(sizes) / len(sizes):.0f}, max {max(sizes)} bytes")
     configs = [f.message for f in frames if f.type == framing.CONFIG]
@@ -109,7 +123,7 @@ def main() -> int:
         print(f"config: protocol {c.protocol_version}, firmware {c.firmware}, {c.arbitration_bps} / {c.data_bps} bit/s, "
               f"BRS {c.brs}, {c.node_count} nodes, {c.param_count} parameters, names {c.params[0].name}..{c.params[-1].name}")
 
-    ok = bool(snaps) and not errors and gaps == 0
+    ok = bool(snaps) and not errors and lost == 0
     if args.compare_log:
         reports = read_log(args.compare_log)
         compared = mismatches = 0

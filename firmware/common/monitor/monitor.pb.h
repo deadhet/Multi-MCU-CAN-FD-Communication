@@ -98,7 +98,8 @@ typedef struct _monitor_Snapshot {
     monitor_NodeHealth nodes[4]; /* 4, MCU1 first */
     pb_size_t params_count;
     monitor_Parameter params[20]; /* 20, P1 first */
-    uint32_t snapshots_skipped; /* §8.4 overflow policy, since boot */
+    uint32_t frames_skipped; /* made but never sent: a newer one of the same kind replaced */
+    /* it while the link was busy (§8.4, latest wins), since boot */
     uint32_t online_count; /* nodes ONLINE (or SELF) out of 4 (section 1) */
     uint32_t synced_count; /* parameters VALID and FRESH at MCU1, out of 20 (section 1) */
     uint32_t health_percent; /* network health, 0-100; formula in docs/uart_protocol.md */
@@ -242,7 +243,7 @@ extern "C" {
 #define monitor_Snapshot_uptime_ms_tag           1
 #define monitor_Snapshot_nodes_tag               2
 #define monitor_Snapshot_params_tag              3
-#define monitor_Snapshot_snapshots_skipped_tag   4
+#define monitor_Snapshot_frames_skipped_tag      4
 #define monitor_Snapshot_online_count_tag        5
 #define monitor_Snapshot_synced_count_tag        6
 #define monitor_Snapshot_health_percent_tag      7
@@ -306,7 +307,7 @@ X(a, STATIC,   SINGULAR, UINT32,   data_age_ms,      10)
 X(a, STATIC,   SINGULAR, UINT32,   uptime_ms,         1) \
 X(a, STATIC,   REPEATED, MESSAGE,  nodes,             2) \
 X(a, STATIC,   REPEATED, MESSAGE,  params,            3) \
-X(a, STATIC,   SINGULAR, UINT32,   snapshots_skipped,   4) \
+X(a, STATIC,   SINGULAR, UINT32,   frames_skipped,    4) \
 X(a, STATIC,   SINGULAR, UINT32,   online_count,      5) \
 X(a, STATIC,   SINGULAR, UINT32,   synced_count,      6) \
 X(a, STATIC,   SINGULAR, UINT32,   health_percent,    7)

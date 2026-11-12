@@ -149,18 +149,17 @@ static void report_task(void)
     uart_debug_write_u32(uart_debug_dropped());
     uart_debug_write("\n");
 
-    /* UART link: frames and bytes queued, frames that did not fit, snapshots and CONFIGs sent,
-     * snapshots skipped (§8.4), last and largest snapshot on the wire in bytes. */
-    uart_link_stats_t link;
+    /* UART link: frames and bytes fully handed to the USART, snapshots and CONFIGs handed over,
+     * frames replaced unsent by a newer one (§8.4, latest wins), frames not encoded, last and
+     * largest snapshot on the wire in bytes. */
+    tx_slots_stats_t link;
     monitor_stats_t mon;
     uart_link_get_stats(&link);
     monitor_get_stats(&mon);
-    uart_debug_write("MCU" NUMBER_TEXT(NODE_ID) " link frames=");
-    uart_debug_write_u32(link.frames);
+    uart_debug_write("MCU" NUMBER_TEXT(NODE_ID) " link sent=");
+    uart_debug_write_u32(link.sent);
     uart_debug_write(" bytes=");
     uart_debug_write_u32(link.bytes);
-    uart_debug_write(" refused=");
-    uart_debug_write_u32(link.refused);
     uart_debug_write(" snap=");
     uart_debug_write_u32(mon.snapshots);
     uart_debug_write(" cfg=");
