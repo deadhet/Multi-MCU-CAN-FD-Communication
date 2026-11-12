@@ -31,6 +31,13 @@ gcc -std=c11 -Wall -Wextra -Wshadow -Werror -O2 \
 
 gcc -std=c11 -Wall -Wextra -Wshadow -Werror -O2 \
     -I"$repo/firmware/common" \
+    -DNODE_ID=2 \
+    "$repo/firmware/tests/host/test_sched.c" "$repo/firmware/common/sched/scheduler.c" \
+    -o "$out/test_sched"
+"$out/test_sched"
+
+gcc -std=c11 -Wall -Wextra -Wshadow -Werror -O2 \
+    -I"$repo/firmware/common" \
     "$repo/firmware/tests/host/test_tx_slots.c" "$repo/firmware/common/drivers/tx_slots.c" \
     -o "$out/test_tx_slots"
 "$out/test_tx_slots"

@@ -212,14 +212,16 @@ static void step_task(void)
 }
 
 static sched_task_t tasks[] = {
-    { step_task, STEP_PERIOD_MS, 0U },
+    { step_task, STEP_PERIOD_MS, 0U, "step" },
 };
+_Static_assert(TASK_COUNT <= SCHED_MAX_TASKS, "more tasks than the scheduler measures");
 
 int main(void)
 {
     can_rx_slot_t frame;
 
     board_init();
+    sched_init(tasks, TASK_COUNT);
     uart_debug_write("LOOPBACK start\n");
 
     if (!fdcan_init(FDCAN_MODE_LOOPBACK, ranges, sizeof(ranges) / sizeof(ranges[0]))) {
@@ -229,7 +231,7 @@ int main(void)
 
     for (;;) {
         if (!stopped) {
-            sched_run_due(tasks, TASK_COUNT);
+            sched_run_due();
         }
 
         /* Phase 2 must leave frames in the queues on purpose. In phase 1 only one frame is in

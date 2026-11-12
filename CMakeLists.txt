@@ -22,6 +22,7 @@ set(COMMON_SOURCES
   ${FW}/common/drivers/fdcan.c
   ${FW}/common/drivers/frame_queue.c
   ${FW}/common/drivers/systick.c
+  ${FW}/common/drivers/cycles.c
   ${FW}/common/drivers/uart.c
   ${FW}/common/sched/scheduler.c
   ${FW}/common/comm/comm.c

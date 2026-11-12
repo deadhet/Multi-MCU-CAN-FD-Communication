@@ -143,6 +143,10 @@ static void report_task(void)
     params_debug_report();
     diag_debug_report(systick_now_ms());
 
+    /* Scheduler worst cases since boot: longest main-loop pass, then per task its longest run,
+     * latest start after it was due, and number of late starts. */
+    sched_debug_report();
+
     /* §8.4: debug text that does not fit in the 2 KB USART1 buffer is dropped whole and
      * counted; this line makes such losses visible. */
     uart_debug_write("MCU" NUMBER_TEXT(NODE_ID) " log dropped=");
@@ -176,14 +180,15 @@ static void report_task(void)
 }
 
 static sched_task_t tasks[] = {
-    { param_task, PARAM_PERIOD_MS, 0U },
-    { freshness_task, FRESHNESS_PERIOD_MS, 0U },
-    { diag_task, DIAG_PERIOD_MS, 0U },
-    { heartbeat_task, HEARTBEAT_PERIOD_MS, HEARTBEAT_FIRST_MS - HEARTBEAT_PERIOD_MS },
-    { report_task, REPORT_PERIOD_MS, REPORT_FIRST_MS - REPORT_PERIOD_MS },
-    { snapshot_task, SNAPSHOT_PERIOD_MS, SNAPSHOT_FIRST_MS - SNAPSHOT_PERIOD_MS },
-    { config_task, CONFIG_PERIOD_MS, CONFIG_FIRST_MS - CONFIG_PERIOD_MS },
+    { param_task, PARAM_PERIOD_MS, 0U, "param" },
+    { freshness_task, FRESHNESS_PERIOD_MS, 0U, "fresh" },
+    { diag_task, DIAG_PERIOD_MS, 0U, "diag" },
+    { heartbeat_task, HEARTBEAT_PERIOD_MS, HEARTBEAT_FIRST_MS - HEARTBEAT_PERIOD_MS, "hb" },
+    { report_task, REPORT_PERIOD_MS, REPORT_FIRST_MS - REPORT_PERIOD_MS, "report" },
+    { snapshot_task, SNAPSHOT_PERIOD_MS, SNAPSHOT_FIRST_MS - SNAPSHOT_PERIOD_MS, "snap" },
+    { config_task, CONFIG_PERIOD_MS, CONFIG_FIRST_MS - CONFIG_PERIOD_MS, "cfg" },
 };
+_Static_assert(TASK_COUNT <= SCHED_MAX_TASKS, "more tasks than the scheduler measures");
 
 int main(void)
 {
@@ -201,9 +206,11 @@ int main(void)
     }
     uart_link_init();
     monitor_init();
+    sched_init(tasks, TASK_COUNT);
 
     for (;;) {
-        sched_run_due(tasks, TASK_COUNT);
+        sched_pass_mark();
+        sched_run_due();
 
         /* Drain the CAN RX ring on every pass (Design Document §4.1). comm validates and counts
          * each frame; params/ takes the accepted parameter blocks and diag/ the heartbeats.
