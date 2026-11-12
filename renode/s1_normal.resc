@@ -1,0 +1,5 @@
+# Scenario S1 (Design Document §9): normal operation, all four nodes, 10 s. Assignment scenario 1.
+#   renode --disable-gui --console -e "include @renode/s1_normal.resc" </dev/null
+include $ORIGIN/system.resc
+emulation RunFor "10.0"
+quit

@@ -1,0 +1,14 @@
+# Scenario S4 (Design Document §9, §7.5): MCU1, the master, halted at 5 s and reset at 10 s,
+# 5 s more. The slaves must see it go OFFLINE, keep exchanging their own parameters, flag P1-P5,
+# count its restart and confirm its recovery. No failover (§7.5).
+#   renode --disable-gui --console -e "include @renode/s4_master_failure.resc" </dev/null
+include $ORIGIN/system.resc
+emulation RunFor "5.0"
+mach set "mcu1"
+sysbus.cpu IsHalted true
+emulation RunFor "5.0"
+mach set "mcu1"
+machine Reset
+sysbus.cpu IsHalted false
+emulation RunFor "5.0"
+quit
