@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CAN FD Network Monitor</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Status line. The assignment asks for exactly three sections; this is the page header, as
+     in its own sample, not a fourth section. -->
+<header>
+  <div class="title">
+    <h1>Multi-MCU CAN FD Network Monitor</h1>
+    <span class="sub" id="h-source">MCU1 over UART</span>
+  </div>
+  <div class="field"><span class="k">UART link</span><span class="v" id="h-link">–</span></div>
+  <div class="field"><span class="k">System health</span><span class="v" id="h-health">–</span></div>
+  <div class="field"><span class="k">MCU1 uptime</span><span class="v" id="h-uptime">–</span></div>
+  <div class="field end"><span class="k">PC time</span><span class="v" id="h-time">–</span></div>
+</header>
+
+<main>
+  <section id="s1">
+    <h2>Overall network health <span class="note" id="s1-note"></span></h2>
+    <div class="waiting" id="s1-wait">Waiting for MCU1…</div>
+    <div class="s1-grid" id="s1-body" hidden>
+      <div class="health">
+        <div class="figure"><span class="pct" id="s1-pct">–</span><span id="s1-label"></span></div>
+        <div class="meter" id="s1-meter"><div class="fill" id="s1-fill"></div></div>
+        <div class="scale"><span class="at0">0</span><span class="at25">25</span><span class="at50">50</span><span class="at75">75</span><span class="at100">100</span></div>
+        <p class="rule-text" id="s1-rule"></p>
+        <div class="count-row"><span class="k">Controllers online</span><span class="v" id="s1-online">–</span><span class="segs" id="s1-nodes"></span></div>
+        <div class="count-row"><span class="k">Parameters synchronized</span><span class="v" id="s1-synced">–</span><span class="segs" id="s1-params"></span></div>
+      </div>
+      <div>
+        <h3>CAN FD configuration</h3>
+        <table class="kv" id="s1-can"></table>
+        <h3>Monitoring link (UART)</h3>
+        <table class="kv" id="s1-uart"></table>
+      </div>
+    </div>
+  </section>
+
+  <section id="s2">
+    <h2>Individual MCU health <span class="note">as MCU1 sees each node</span></h2>
+    <div class="waiting" id="s2-wait">Waiting for MCU1…</div>
+    <div id="s2-body" hidden>
+      <div class="table-wrap">
+        <table class="grid">
+          <thead><tr>
+            <th>MCU</th><th>Status</th><th>Heartbeat</th><th class="num">Last heartbeat</th>
+            <th class="num">Missed</th><th>Communication timeout</th><th>Recovery / re-sync</th>
+            <th class="num">Restarts</th>
+          </tr></thead>
+          <tbody id="s2-rows"></tbody>
+        </table>
+      </div>
+      <h3>Event log <span class="lv-dim">newest first; MCU1 time in s, then PC time</span></h3>
+      <div class="events-box">
+        <table class="grid"><tbody id="s2-events"></tbody></table>
+      </div>
+    </div>
+  </section>
+
+  <section id="s3">
+    <h2>Parameter monitoring, P1–P20 <span class="note">MCU1's database</span></h2>
+    <div class="waiting" id="s3-wait">Waiting for MCU1…</div>
+    <div class="table-wrap" id="s3-body" hidden>
+      <table class="grid">
+        <thead><tr>
+          <th>ID</th><th>Name</th><th class="num">Value</th><th>Type</th><th>Source</th>
+          <th>Freshness</th><th>Validity</th><th class="num">Age</th>
+        </tr></thead>
+        <tbody id="s3-rows"></tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<!-- initial.js: the model at page load (window.INITIAL), from the server; absent in mock mode. -->
+<script src="initial.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

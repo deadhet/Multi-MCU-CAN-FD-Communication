@@ -1,0 +1,12 @@
+# A loose CAN cable on this MCU: a short drop, then a long one.
+#   mcu3> run loose_cable
+# The others count a heartbeat as missed after 150 ms of silence (LATE) and call the node
+# OFFLINE after 350 ms, so one lost heartbeat never takes a node offline.
+# A heartbeat due during a drop waits in this MCU's CAN transmit buffer and goes out when the
+# cable is back, so the others see a gap of the drop plus up to 100 ms: a 0.15-0.25 s drop is
+# always LATE and never OFFLINE; from 0.35 s it is always OFFLINE.
+wait 1          # let the network run a moment first, so the others know this MCU
+unplug 0.2      # short drop: LATE and its parameters STALE for a moment, then ONLINE; never OFFLINE
+wait 3
+unplug 2        # long drop: LATE, OFFLINE, its parameters STALE; then RECOVERING, ONLINE
+wait 4

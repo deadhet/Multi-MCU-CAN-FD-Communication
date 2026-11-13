@@ -14,11 +14,11 @@
 # Age is "now - arrival time", and arrival time is stamped in the FDCAN interrupt. In halt the
 # interrupt cannot run either, so age there is only the time since the CPU resumed.
 # The real source tree is never changed.
-#   renode/stage4_overload.sh <stall|halt|babble> [source tree, default: this repo]
+#   renode/tests/stage4_overload.sh <stall|halt|babble> [source tree, default: this repo]
 set -euo pipefail
 
 scenario="$1"
-repo="$(cd "$(dirname "$0")/.." && pwd)"
+repo="$(cd "$(dirname "$0")/../.." && pwd)"
 src="${2:-$repo}"
 dst="$repo/build/overload/$scenario"
 rm -rf "$dst"

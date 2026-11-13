@@ -1,0 +1,10 @@
+# This MCU hangs for a moment and recovers by itself, then hangs for good and is reset
+# (scenario S2 on a slave, S4 when run in MCU1's terminal).
+#   mcu2> run hang_then_crash
+wait 1          # let the network run a moment first
+halt            # the CPU stops
+wait 0.15
+resume          # a short hang: LATE, then ONLINE again; no restart
+wait 3
+halt 5          # a long hang, then a reset after 5 s: OFFLINE, then RESTART, RECOVERING, ONLINE
+wait 8

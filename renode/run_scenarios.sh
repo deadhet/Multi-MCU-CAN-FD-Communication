@@ -80,11 +80,11 @@ no_fault_lines() { # file: no peer ever LATE, OFFLINE, RECOVERING, NO_HEARTBEAT 
 }
 
 frame_counts_match() { # name: every receiver accepted every frame each sender queued
-    awk -f "$repo/renode/stage4_crosscheck.awk" "$out/$1"/mcu[1-4].log | grep -q " 0 mismatch"
+    awk -f "$repo/renode/tests/stage4_crosscheck.awk" "$out/$1"/mcu[1-4].log | grep -q " 0 mismatch"
 }
 
 crosscheck_outside() { # name from to: parameter copies match their owner at every report outside [from, to] ms
-    awk -f "$repo/renode/stage5_params_crosscheck.awk" "$out/$1"/mcu[1-4].log |
+    awk -f "$repo/renode/tests/stage5_params_crosscheck.awk" "$out/$1"/mcu[1-4].log |
         awk -v a="$2" -v b="$3" '/^(MISMATCH|NOT SYNCED)/ { match($0, /t=[0-9]+/); t = substr($0, RSTART + 2, RLENGTH - 2) + 0; if (t < a || t > b) bad++ } END { exit bad > 0 }'
 }
 

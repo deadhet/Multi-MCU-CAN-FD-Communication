@@ -1,0 +1,324 @@
+/* CAN FD network monitor. Style: a high-performance HMI, after ANSI/ISA-101 (operator
+ * displays in process plants):
+ *   - grey surfaces; a healthy screen is quiet: normal states are plain text, never coloured;
+ *   - colour only for abnormal states, and always with a word and a shape as well (amber
+ *     triangle = caution, red square = fault, blue circle = in transition), so state never
+ *     depends on colour alone;
+ *   - numbers in a monospace face with tabular figures, right-aligned, so digits line up;
+ *   - no gradients, shadows, rounded cards, icons or animation.
+ * Every colour is a token below; nothing else in this file names a colour. */
+
+:root {
+  --page: #c3c5c8;
+  --panel: #d3d5d8;
+  --panel-head: #c8cacd;
+  --cell-alt: #cdd0d3;
+  --rule: #a3a7ab;
+  --rule-strong: #6f7378;
+  --text: #1c1f22;
+  --label: #464b50;
+  --value: #15304a;          /* live values: dark slate, apart from the labels' grey */
+  --dim: #7a7f84;            /* no data, not applicable, or data from a lost link */
+  --meter: #3d5266;
+  --head: #33373c;
+  --head-rule: #55595e;
+  --head-text: #e4e6e8;
+  --head-label: #aeb2b6;
+  --caution: #f0a00a;
+  --caution-text: #1c1f22;
+  --fault: #bc1a2b;
+  --fault-text: #ffffff;
+  --info: #2a5a85;
+  --info-text: #ffffff;
+  --sans: "DejaVu Sans Condensed", "Liberation Sans Narrow", "Arial Narrow", sans-serif;
+  --mono: "DejaVu Sans Mono", "Liberation Mono", Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+html { background: var(--page); }
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--text);
+  font: 14px/1.35 var(--sans);
+}
+
+/* ---- Header: not a section, the page's status line (as in the assignment's sample) ---- */
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  background: var(--head);
+  color: var(--head-text);
+}
+
+header .title {
+  padding: 7px 14px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+header h1 { margin: 0; font-size: 17px; font-weight: 700; }
+header .sub { font-size: 12px; color: var(--head-label); }
+
+header .field {
+  padding: 6px 14px;
+  border-left: 1px solid var(--head-rule);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+}
+
+header .field.end { margin-left: auto; }
+header .k { font-size: 11px; color: var(--head-label); }
+header .v { font-family: var(--mono); font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ---- Sections ---- */
+main {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  grid-template-areas: "s1 s3" "s2 s3";
+  align-items: start;
+}
+
+#s1 { grid-area: s1; }
+#s2 { grid-area: s2; }
+#s3 { grid-area: s3; }
+
+section {
+  background: var(--panel);
+  border: 1px solid var(--rule-strong);
+  min-width: 0;
+}
+
+section > h2 {
+  margin: 0;
+  padding: 5px 10px;
+  font-size: 15px;
+  font-weight: 700;
+  background: var(--panel-head);
+  border-bottom: 1px solid var(--rule-strong);
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+section > h2 .note { font-size: 12px; font-weight: 400; color: var(--label); }
+
+h3 {
+  margin: 0;
+  padding: 8px 10px 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--label);
+}
+
+.waiting { padding: 10px; color: var(--dim); }
+
+/* ---- Section 1 ---- */
+.s1-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
+}
+
+.s1-grid > div + div { border-left: 1px solid var(--rule); }
+
+.health { padding: 8px 10px 10px; }
+
+.health .figure {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+
+.health .figure .pct {
+  font-family: var(--mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--value);
+  font-variant-numeric: tabular-nums;
+}
+
+.meter {
+  position: relative;
+  height: 14px;
+  background: var(--cell-alt);
+  border: 1px solid var(--rule-strong);
+}
+
+.meter .fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--meter); }
+.meter .fill.caution { background: var(--caution); }
+.meter .fill.fault { background: var(--fault); }
+.meter .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--rule-strong); }
+
+.scale {
+  position: relative;
+  height: 14px;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--label);
+}
+
+.scale span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+.scale span:first-child { transform: none; }
+.scale span:last-child { transform: translateX(-100%); }
+
+.rule-text { margin: 6px 0 10px; font-size: 12px; color: var(--label); }
+
+.count-row {
+  display: grid;
+  grid-template-columns: 176px 48px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.count-row .k { color: var(--label); }
+.count-row .v { font-family: var(--mono); color: var(--value); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* One box per controller or parameter: filled = online / synchronized. */
+.segs { display: flex; flex-wrap: wrap; gap: 3px; }
+.segs .grp { display: flex; gap: 2px; margin-right: 6px; }
+
+.seg {
+  width: 22px;
+  height: 18px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  border: 1px solid var(--rule-strong);
+  background: var(--meter);
+  color: var(--info-text);
+}
+
+.seg.small { width: 9px; }
+.seg.caution { background: var(--caution); color: var(--caution-text); }
+.seg.fault { background: var(--fault); color: var(--fault-text); }
+.seg.dim { background: var(--cell-alt); color: var(--dim); }
+
+.kv { width: 100%; border-collapse: collapse; font-size: 13px; }
+.kv th { text-align: left; font-weight: 400; color: var(--label); padding: 3px 10px; }
+.kv td { text-align: right; padding: 3px 10px; font-family: var(--mono); color: var(--value); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.kv tr + tr th, .kv tr + tr td { border-top: 1px solid var(--rule); }
+
+/* ---- Tables (sections 2 and 3, event log) ---- */
+table.grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+table.grid th {
+  text-align: left;
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--label);
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--rule-strong);
+  white-space: nowrap;
+}
+
+table.grid td {
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--rule);
+  color: var(--value);
+  white-space: nowrap;
+}
+
+table.grid tbody tr:nth-child(even) td { background: var(--cell-alt); }
+table.grid tr.group-end td { border-bottom: 1px solid var(--rule-strong); }
+table.grid th.num, table.grid td.num { text-align: right; }
+table.grid td.num, table.grid td.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+table.grid td.label { color: var(--text); }
+
+.events-box { max-height: 236px; overflow-y: auto; border-top: 1px solid var(--rule); scrollbar-color: var(--rule-strong) var(--panel); }
+.events-box table.grid td { white-space: normal; }
+
+/* ---- State marks: colour + shape + word ---- */
+.lv {
+  display: inline-block;
+  padding: 0 5px;
+  line-height: 17px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.lv::before { margin-right: 4px; font-weight: 400; }
+.lv-caution { background: var(--caution); color: var(--caution-text); }
+.lv-caution::before { content: "\25B2"; }
+.lv-fault { background: var(--fault); color: var(--fault-text); }
+.lv-fault::before { content: "\25A0"; }
+.lv-info { background: var(--info); color: var(--info-text); }
+.lv-info::before { content: "\25CF"; }
+.lv-dim { color: var(--dim); }
+
+/* Header marks sit on the dark header: same colours, slightly larger. */
+header .lv { line-height: 19px; font-size: 13px; }
+
+/* ---- Data from a link that is no longer CONNECTED: kept, but visibly old ---- */
+body.stale main table.grid td,
+body.stale main .kv td,
+body.stale main .count-row .v,
+body.stale main .health .pct { color: var(--dim); }
+body.stale main .seg,
+body.stale main .meter .fill { background: var(--cell-alt); color: var(--dim); }
+body.stale main .lv { background: transparent; color: var(--dim); }
+
+/* ---- Narrow screens: one column ---- */
+@media (max-width: 1150px) {
+  main { grid-template-columns: minmax(0, 1fr); grid-template-areas: "s1" "s2" "s3"; }
+  .s1-grid { grid-template-columns: minmax(0, 1fr); }
+  .s1-grid > div + div { border-left: 0; border-top: 1px solid var(--rule); }
+  .table-wrap { overflow-x: auto; }
+}
+
+/* ---- Small marks: a coloured box with the shape, then plain text. For columns derived from a
+ * state already marked in full (one strong mark per fault, not one per column) and for the
+ * event log, so one fault does not paint the whole screen. ---- */
+.mk {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 5px;
+  font-size: 8px;
+  line-height: 12px;
+  text-align: center;
+  vertical-align: -1px;
+}
+
+.mk-caution { background: var(--caution); color: var(--caution-text); }
+.mk-caution::before { content: "\25B2"; }
+.mk-fault { background: var(--fault); color: var(--fault-text); }
+.mk-fault::before { content: "\25A0"; }
+.mk-info { background: var(--info); color: var(--info-text); }
+.mk-info::before { content: "\25CF"; }
+body.stale main .mk { background: transparent; color: var(--dim); }
+
+.count-row .k { white-space: nowrap; }
+.health .figure .unit { font-size: 15px; font-weight: 400; color: var(--label); margin-left: 2px; }
+
+/* ---- Medium screens (1366 px laptops): text columns wrap, numbers never do; a table that
+ * still does not fit scrolls inside its section, never the page. ---- */
+table.grid th, table.grid td { white-space: normal; }
+table.grid td.num, table.grid td.mono, table.grid th.num { white-space: nowrap; }
+.table-wrap { overflow-x: auto; }
+
+@media (max-width: 1500px) {
+  table.grid th, table.grid td { padding-left: 6px; padding-right: 6px; }
+}
+.seg.info { background: var(--info); color: var(--info-text); }
+.scale .at0 { left: 0; }
+.scale .at25 { left: 25%; }
+.scale .at50 { left: 50%; }
+.scale .at75 { left: 75%; }
+.scale .at100 { left: 100%; }
+body.stale main #s1-label { color: var(--dim); }

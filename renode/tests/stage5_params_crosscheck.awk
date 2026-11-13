@@ -1,4 +1,4 @@
-# Usage: awk -f renode/stage5_params_crosscheck.awk logs/mcu1.log logs/mcu2.log logs/mcu3.log logs/mcu4.log
+# Usage: awk -f renode/tests/stage5_params_crosscheck.awk logs/mcu1.log logs/mcu2.log logs/mcu3.log logs/mcu4.log
 # At each report from 1 s on, every receiver's copy of P1-P20 must equal the owner's own
 # value (raw 4 bytes), and every node must report synced=20. Reports run 5 ms after a send, so
 # the last block of every node has arrived and no sample has been taken since. Reports are matched

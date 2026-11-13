@@ -2,11 +2,11 @@
 # Stage 4 mutation tests. Copies the source tree to build/mutant/<name>, breaks node 2's
 # frames in one way, builds, runs 4 nodes for 1.1 s, and prints the t=1005 report of every
 # node. The real source tree is never changed.
-#   renode/stage4_mutate.sh <name>   (crc version source length nobrs dup old gap badid fakeboot values hbcrc)
+#   renode/tests/stage4_mutate.sh <name>   (crc version source length nobrs dup old gap badid fakeboot values hbcrc)
 set -euo pipefail
 
 name="$1"
-repo="$(cd "$(dirname "$0")/.." && pwd)"
+repo="$(cd "$(dirname "$0")/../.." && pwd)"
 dst="$repo/build/mutant/$name"
 rm -rf "$dst"
 mkdir -p "$dst/logs"

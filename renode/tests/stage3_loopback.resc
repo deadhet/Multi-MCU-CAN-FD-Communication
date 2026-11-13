@@ -1,0 +1,11 @@
+# Stage 3 proof: FDCAN internal loop back, with register access logged.
+#   renode --disable-gui --console -e "include @renode/tests/stage3_loopback.resc" </dev/null > logs/stage3_access.txt
+# Result is in logs/loopback.log. No hub is connected.
+mach create "loopback"
+machine LoadPlatformDescription $ORIGIN/../node.repl
+sysbus.usart1 CreateFileBackend $ORIGIN/../../logs/loopback.log true
+sysbus LoadELF $ORIGIN/../../build/node_loopback.elf
+sysbus LogPeripheralAccess sysbus.fdcan1 true
+emulation RunFor "0.5"
+sysbus LogPeripheralAccess sysbus.fdcan1 false
+quit

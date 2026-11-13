@@ -1,9 +1,0 @@
-# Stage 2 proof: 3.7 s of virtual time on all nodes, with MCU3 reset at 2.5 s.
-#   renode --disable-gui --console -e "include @renode/stage2_run.resc" </dev/null
-include $ORIGIN/system.resc
-emulation RunFor "2.5"
-mach set "mcu3"
-machine Reset
-emulation RunFor "1.2"
-emulation GetTimeSourceInfo
-quit

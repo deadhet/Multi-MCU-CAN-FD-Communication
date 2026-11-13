@@ -1,7 +1,7 @@
 # Stage 4: MCU3 off the bus from 1.5 s to 2.5 s, then back, with no restart (Design S3).
 # Tests the driver's Tx restart after reconnect (docs/setup_findings.md).
-#   renode --disable-gui --console -e "include @renode/stage4_reconnect.resc" </dev/null
-include $ORIGIN/system.resc
+#   renode --disable-gui --console -e "include @renode/tests/stage4_reconnect.resc" </dev/null
+include $ORIGIN/../system.resc
 emulation RunFor "1.5"
 mach set "mcu3"
 connector Disconnect sysbus.fdcan1 canHub

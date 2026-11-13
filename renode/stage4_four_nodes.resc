@@ -1,5 +1,0 @@
-# Stage 4 step 2: all four nodes for 3.1 s. Reports at t = 5, 1005, 2005, 3005 ms.
-#   renode --disable-gui --console -e "include @renode/stage4_four_nodes.resc" </dev/null
-include $ORIGIN/system.resc
-emulation RunFor "3.1"
-quit

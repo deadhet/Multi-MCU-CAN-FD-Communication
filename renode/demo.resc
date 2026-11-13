@@ -1,0 +1,35 @@
+# Dashboard demo (UART step 5): the faults of S3, S2 and S4 one after another, so the dashboard
+# shows every state in one run: 40 s simulated, about 2.5 minutes on this PC (Renode runs at
+# about 0.3x real time here).
+#   renode/demo.sh     starts the dashboard in the browser, then this script
+#
+#  0 s  all four nodes start: BOOT -> RESYNCING -> OPERATIONAL, health 100 %
+#  5 s  MCU3's CAN cable pulled (S3): MCU3 LATE -> OFFLINE, P11-P15 STALE, owner offline
+# 12 s  cable back: MCU3 RECOVERING -> ONLINE, no restart
+# 17 s  MCU2 halted (S2): MCU2 LATE -> OFFLINE, P6-P10 STALE
+# 23 s  MCU2 reset: MCU2 RESTARTED, RECOVERING -> ONLINE
+# 29 s  MCU1 halted (S4): the UART link goes LOST on the PC
+# 33 s  MCU1 reset: the PC sees MCU1 restart (sequence back to 1) and a new CONFIG
+# 40 s  end: Renode quits, the link shows DISCONNECTED, the last data stays (greyed)
+include $ORIGIN/system.resc
+emulation RunFor "5.0"
+mach set "mcu3"
+connector Disconnect sysbus.fdcan1 canHub
+emulation RunFor "7.0"
+connector Connect sysbus.fdcan1 canHub
+emulation RunFor "5.0"
+mach set "mcu2"
+sysbus.cpu IsHalted true
+emulation RunFor "6.0"
+mach set "mcu2"
+machine Reset
+sysbus.cpu IsHalted false
+emulation RunFor "6.0"
+mach set "mcu1"
+sysbus.cpu IsHalted true
+emulation RunFor "4.0"
+mach set "mcu1"
+machine Reset
+sysbus.cpu IsHalted false
+emulation RunFor "7.0"
+quit

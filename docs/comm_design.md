@@ -81,7 +81,7 @@ The report task first runs at 5 ms, then every 1000 ms: its start value is `5 âˆ
 
 ## Results (Renode 1.17.0, 100 Âµs quantum)
 
-Scripts are in `renode/`. Logs were copied to `logs/stage4_<scenario>_mcuN.log`.
+Scripts are in `renode/tests/` (moved there 13 Nov 2026). Rerunning one writes its logs to `logs/`.
 
 | Scenario | Script | Result |
 |---|---|---|
@@ -98,7 +98,7 @@ Scripts are in `renode/`. Logs were copied to `logs/stage4_<scenario>_mcuN.log`.
 
 ## Mutation tests
 
-`renode/stage4_mutate.sh <name>` copies the tree to `build/mutant/<name>`, breaks only node 2's frames, builds, and runs 4 nodes for 1.1 s. At t=1005, MCU1, MCU3 and MCU4 showed:
+`renode/tests/stage4_mutate.sh <name>` copies the tree to `build/mutant/<name>`, breaks only node 2's frames, builds, and runs 4 nodes for 1.1 s. At t=1005, MCU1, MCU3 and MCU4 showed:
 
 | Mutation | Accepted from node 2 (p, h) | Counter at each receiver |
 |---|---|---|

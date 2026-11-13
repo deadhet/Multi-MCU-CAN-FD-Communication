@@ -1,13 +1,13 @@
 # Stage 4 step 1: MCU1 and MCU2 only, on one CAN hub, for 2.1 s.
-#   renode --disable-gui --console -e "include @renode/stage4_two_nodes.resc" </dev/null
+#   renode --disable-gui --console -e "include @renode/tests/stage4_two_nodes.resc" </dev/null
 # Logs: logs/mcu1.log, logs/mcu2.log. Reports at t = 5, 1005, 2005 ms.
 
 emulation CreateCANHub "canHub"
 
 mach create "mcu1"
-$node1=$ORIGIN/../build/node1.elf
-machine LoadPlatformDescription $ORIGIN/node.repl
-sysbus.usart1 CreateFileBackend $ORIGIN/../logs/mcu1.log true
+$node1=$ORIGIN/../../build/node1.elf
+machine LoadPlatformDescription $ORIGIN/../node.repl
+sysbus.usart1 CreateFileBackend $ORIGIN/../../logs/mcu1.log true
 connector Connect sysbus.fdcan1 canHub
 macro reset
 """
@@ -16,9 +16,9 @@ macro reset
 runMacro $reset
 
 mach create "mcu2"
-$node2=$ORIGIN/../build/node2.elf
-machine LoadPlatformDescription $ORIGIN/node.repl
-sysbus.usart1 CreateFileBackend $ORIGIN/../logs/mcu2.log true
+$node2=$ORIGIN/../../build/node2.elf
+machine LoadPlatformDescription $ORIGIN/../node.repl
+sysbus.usart1 CreateFileBackend $ORIGIN/../../logs/mcu2.log true
 connector Connect sysbus.fdcan1 canHub
 macro reset
 """

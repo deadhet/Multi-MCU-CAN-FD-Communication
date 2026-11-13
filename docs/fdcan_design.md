@@ -78,7 +78,7 @@ The caller passes ID ranges, so the driver stays unaware of the protocol. Each r
 
 Counters: `rx_fifo_lost` (hardware `RF0L` events), `rx_overwritten[queue]` (counted by the reader when it notices a lap), `rx_unrouted` (cannot happen while filters and routes are the same list).
 
-Measured with `renode/stage4_overload.sh` (MCU3, node 1's frames after the overload):
+Measured with `renode/tests/stage4_overload.sh` (MCU3, node 1's frames after the overload):
 
 | Overload on MCU3 | Before (one 32-slot ring, drop newest) | Now (4 queues, keep newest) |
 |---|---|---|

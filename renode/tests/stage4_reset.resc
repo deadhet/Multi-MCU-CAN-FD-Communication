@@ -1,7 +1,7 @@
 # Stage 4: MCU3 reset at 1.5 s. Its sequence numbers start again at 1. Its boot heartbeat
 # triggers the restart rule in comm/ (option B), so peers accept it as a fresh start.
-#   renode --disable-gui --console -e "include @renode/stage4_reset.resc" </dev/null
-include $ORIGIN/system.resc
+#   renode --disable-gui --console -e "include @renode/tests/stage4_reset.resc" </dev/null
+include $ORIGIN/../system.resc
 emulation RunFor "1.5"
 mach set "mcu3"
 machine Reset

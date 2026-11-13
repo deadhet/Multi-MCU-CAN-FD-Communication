@@ -2,8 +2,8 @@
 # frames from 1.5 s, including a heartbeat that says OPERATIONAL; they go out first at
 # reconnect, then the reset clears MCU3 and its boot heartbeat says BOOT. Peers must count one
 # restart, stay RECOVERING, and go ONLINE only on MCU3's later OPERATIONAL heartbeat.
-#   renode --disable-gui --console -e "include @renode/stage6_old_hb_then_boot.resc" </dev/null
-include $ORIGIN/system.resc
+#   renode --disable-gui --console -e "include @renode/tests/stage6_old_hb_then_boot.resc" </dev/null
+include $ORIGIN/../system.resc
 emulation RunFor "1.5"
 mach set "mcu3"
 connector Disconnect sysbus.fdcan1 canHub

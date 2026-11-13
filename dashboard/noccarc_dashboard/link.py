@@ -78,7 +78,7 @@ class LinkCore:
         self.uptime = UptimeTracker()
         self.snapshot = None        # latest monitor_pb2.Snapshot
         self.config = None          # latest monitor_pb2.Config
-        self.events: deque = deque(maxlen=history)  # (PC date-time, monitor_pb2.Event)
+        self.events: deque = deque(maxlen=history)  # (PC date-time, monitor_pb2.Event, MCU1 session)
         self.lost_periods = 0       # CONNECTED -> LOST transitions
         self.frames: list[framing.Frame] | None = [] if keep_frames else None
         self.frame_sessions: list[int] = []  # session index of each kept frame
@@ -144,6 +144,15 @@ class LinkCore:
     def lost(self) -> int:
         return sum(s.lost for s in self.sessions)
 
+    @property
+    def frames_received(self) -> int:
+        return sum(s.frames for s in self.sessions)
+
+    @property
+    def last_valid(self) -> float | None:
+        """Monotonic time of the last valid frame, None before the first."""
+        return self._last_valid
+
     # -- internals -------------------------------------------------------------------------------
     def _set(self, state: str, now: float, why: str) -> None:
         if state == self.state:
@@ -176,7 +185,7 @@ class LinkCore:
                 s.configs += 1
                 self.config = f.message
             else:
-                self.events.append((datetime.now().isoformat(timespec="milliseconds"), f.message))
+                self.events.append((datetime.now().isoformat(timespec="milliseconds"), f.message, s.index))
         if self.frames is not None:
             self.frames.append(f)
             self.frame_sessions.append(s.index)
@@ -301,6 +310,9 @@ class Link:
             c = self.core
             return {
                 "state": c.state,
+                "since_valid_s": None if c.last_valid is None else time.monotonic() - c.last_valid,
+                "why": c.log[-1][3] if c.log else "",
+                "frames": c.frames_received,
                 "snapshot": c.snapshot,
                 "config": c.config,
                 "events": list(c.events),

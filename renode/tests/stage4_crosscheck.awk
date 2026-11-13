@@ -1,4 +1,4 @@
-# Usage: awk -f renode/stage4_crosscheck.awk logs/mcu*.log
+# Usage: awk -f renode/tests/stage4_crosscheck.awk logs/mcu*.log
 # Compares, at each 1 s report, every receiver's accepted frame count with the sender's sent count.
 # Reports are matched by their second (t=5 is report 0, t=1005 or 1006 is report 1), so a report
 # that ran a millisecond late still pairs up; nothing is sent between x005 and x009 ms.
