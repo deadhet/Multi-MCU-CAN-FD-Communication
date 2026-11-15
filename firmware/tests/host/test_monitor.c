@@ -412,14 +412,18 @@ static void test_health(void)
         CHECK(monitor_health_percent(cases[k].online, cases[k].synced) == cases[k].health);
     }
 
-    /* Online: this node always, peers only when ONLINE. */
+    /* Online: this node always, peers only when ONLINE or LATE (Het, 13 Nov 2026). */
     monitor_view_t view;
     make_view(&view); /* n2 ONLINE, n3 OFFLINE, n4 UNKNOWN */
     CHECK(monitor_online_count(&view) == 2U);
     view.peers[3].link = DIAG_ONLINE;
     CHECK(monitor_online_count(&view) == 3U);
-    view.peers[1].link = DIAG_LATE;
+    view.peers[1].link = DIAG_LATE; /* LATE still counts */
     view.peers[2].link = DIAG_DATA_INVALID;
+    CHECK(monitor_online_count(&view) == 3U);
+    view.peers[1].link = DIAG_RECOVERING;
+    CHECK(monitor_online_count(&view) == 2U);
+    view.peers[1].link = DIAG_NO_HEARTBEAT;
     CHECK(monitor_online_count(&view) == 2U);
     view.peers[0].link = DIAG_ONLINE; /* The entry for this node is ignored */
     CHECK(monitor_online_count(&view) == 2U);

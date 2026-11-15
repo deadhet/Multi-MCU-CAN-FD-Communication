@@ -248,7 +248,9 @@ uint32_t monitor_online_count(const monitor_view_t *view)
     uint32_t online = 1U; /* This node */
 
     for (uint8_t node = 1U; node <= COMM_NODE_COUNT; node++) {
-        if ((node != NODE_ID) && (view->peers[node - 1U].link == DIAG_ONLINE)) {
+        diag_link_t link = view->peers[node - 1U].link;
+        /* LATE counts (Het, 13 Nov 2026): one late heartbeat is not yet a failure. */
+        if ((node != NODE_ID) && ((link == DIAG_ONLINE) || (link == DIAG_LATE))) {
             online++;
         }
     }

@@ -109,7 +109,7 @@ def health(s: pb.Snapshot) -> dict:
     o, p = s.online_count, s.synced_count
     rule = (f"Health = the weaker of controllers online ({o}/{NODES} = {o * 100 // NODES} %) and "
             f"parameters synchronized ({p}/{PARAMS} = {p * 100 // PARAMS} %), each rounded down. "
-            f"Online = MCU1 and every peer whose link is ONLINE.")
+            f"Online = MCU1 and every peer whose link is ONLINE or LATE.")
     nodes = []
     for n in s.nodes:
         name = "master" if n.link == pb.SELF else pb.LinkState.Name(n.link)

@@ -101,7 +101,7 @@ typedef struct _monitor_Snapshot {
     monitor_Parameter params[20]; /* 20, P1 first */
     uint32_t frames_skipped; /* made but never sent: a newer one of the same kind replaced */
     /* it while the link was busy (§8.4, latest wins), since boot */
-    uint32_t online_count; /* nodes ONLINE (or SELF) out of 4 (section 1) */
+    uint32_t online_count; /* nodes ONLINE or LATE (or SELF) out of 4 (section 1) */
     uint32_t synced_count; /* parameters VALID and FRESH at MCU1, out of 20 (section 1) */
     uint32_t health_percent; /* network health, 0-100: the weaker of online/4 and synced/20, */
 } monitor_Snapshot;

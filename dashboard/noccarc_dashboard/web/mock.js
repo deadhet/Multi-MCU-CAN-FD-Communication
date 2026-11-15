@@ -122,7 +122,7 @@
       note: "snapshot at MCU1 t = 6.205 s",
       health: {
         pct: 50, label: C("DEGRADED", "caution"),
-        rule: "Health = the weaker of controllers online (2/4 = 50 %) and parameters synchronized (15/20 = 75 %), each rounded down. Only ONLINE counts as online.",
+        rule: "Health = the weaker of controllers online (2/4 = 50 %) and parameters synchronized (15/20 = 75 %), each rounded down. Online = MCU1 and every peer whose link is ONLINE or LATE.",
         online: "2/4", synced: "15/20",
         nodes: [C("1", "", "MCU1 master"), C("2", "", "MCU2 ONLINE"), C("3", "fault", "MCU3 OFFLINE"), C("4", "caution", "MCU4 LATE")],
         params: paramSegs(3),

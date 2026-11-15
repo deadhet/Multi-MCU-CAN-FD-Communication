@@ -76,8 +76,9 @@ uint32_t monitor_send_events(const monitor_view_t *view);
 
 void monitor_get_stats(monitor_stats_t *out);
 
-/* Controllers online out of 4: this node, plus every peer whose link is ONLINE. A peer that is
- * LATE, OFFLINE, RECOVERING, NO_HEARTBEAT, DATA_INVALID or never heard does not count. */
+/* Controllers online out of 4: this node, plus every peer whose link is ONLINE or LATE (Het,
+ * 13 Nov 2026: one late heartbeat is not yet a failure, so health does not dip for it). A peer
+ * that is OFFLINE, RECOVERING, NO_HEARTBEAT, DATA_INVALID or never heard does not count. */
 uint32_t monitor_online_count(const monitor_view_t *view);
 
 /* Network health, 0-100 (Het, 12 Nov 2026; assignment dashboard Section 1): the weaker of
