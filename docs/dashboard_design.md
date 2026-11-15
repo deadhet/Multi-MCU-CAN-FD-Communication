@@ -74,7 +74,7 @@ Style of a high-performance HMI (after ANSI/ISA-101, operator displays in proces
 
 Health label (Het, 13 Nov 2026): 100 % HEALTHY, 1–99 % DEGRADED, 0 % DOWN; NO DATA while the link is not CONNECTED.
 
-Controllers online (Het, 13 Nov 2026): MCU1 plus every peer that is ONLINE or **LATE**. One late heartbeat is not yet a failure, so health does not dip for it; OFFLINE, RECOVERING, NO_HEARTBEAT and DATA_INVALID do not count. The rule is in the firmware (`monitor_online_count()`); the dashboard shows MCU1's figure.
+Controllers online (Het, 13 Nov 2026): MCU1 plus every peer that is ONLINE or **LATE**. A late heartbeat while the node's data keeps arriving is not yet a failure, so health does not dip for it. A node that stops sending altogether still lowers health within 30 ms, through synced/20, when its parameters go STALE. OFFLINE, RECOVERING, NO_HEARTBEAT and DATA_INVALID do not count. The rule is in the firmware (`monitor_online_count()`); the dashboard shows MCU1's figure.
 
 ### Section 2 columns from diag/'s link state
 
@@ -105,7 +105,7 @@ The event log (Section 2) is newest first, with MCU1's time and the PC's time. M
 - `dashboard/tests/test_model.py` (39): a healthy network shows no colour at all; before the first snapshot nothing is shown; a lost link keeps the data, greyed; health labels; every link state's Section 2 columns; missed levels; values by type and float formatting; parameter states; CONFIG and UART rows; events, their words and levels, the restart separator, the cap; device text passed as text.
 - `dashboard/tests/test_server.py` (10): the three files with the safety headers; the initial model; nothing else from the disk (`mock.js`, `..`, encoded `..`); 403 for another Host; the stream's first message; 127.0.0.1 only.
 - Mutants, each caught: LATE shown as normal; no Host check; serving any file in `web/`.
-- Live, Renode S3 with the server (13 Nov 2026): DISCONNECTED → CONNECTED → 100 % HEALTHY → MCU3 LATE (75 %) → OFFLINE → RECOVERING → 100 % → Renode quit: DISCONNECTED, last data greyed. (Measured before LATE counted as online: with the 13 Nov rule, LATE keeps 100 % and health drops to 75 % at OFFLINE.)
+- Live, Renode S3 with the server (13 Nov 2026): DISCONNECTED → CONNECTED → 100 % HEALTHY → MCU3 LATE (75 %) → OFFLINE → RECOVERING → 100 % → Renode quit: DISCONNECTED, last data greyed. (Still what the 13 Nov rule gives: MCU3's five parameters are STALE 30 ms after the cable is pulled, so synced is 15/20 and health 75 % before LATE starts.)
 - Live, `renode/demo.sh`: every state of `demo.resc` seen in order, including the link LOST while MCU1 was halted and MCU1's restart (1 seen), 0 frames lost, 0 frame errors.
 
 ## Future scope
