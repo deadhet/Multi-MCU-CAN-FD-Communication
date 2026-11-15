@@ -3,7 +3,7 @@
  * the CAN queues. Tasks never interrupt each other, so each one must be short and must never
  * wait.
  *
- * Measurements (Het, 12 Nov 2026: measure first, change the timing only if they show
+ * Measurements (measure first, change the timing only if they show
  * lateness). Per task, worst cases since boot: its longest run, its latest start after it was
  * due, and how many runs started late; and the longest main-loop pass. They change nothing
  * about when tasks run. */

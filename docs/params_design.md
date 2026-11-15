@@ -17,11 +17,11 @@ Covers `firmware/common/system_table.c` and `firmware/common/params/`. Section n
 | FRESH/STALE and VALID/INVALID changes logged, grouped, one line per kind | `log_changes()` | §6.2, §8.6 |
 | Arrival gap per sender (last, worst) | `params_apply_block()` | §6.2 |
 | Synced count (VALID and FRESH, 0–20) for the heartbeat | `params_synced_count()` | §5.3 |
-| Owner-offline flag per parameter, copied from diag/ by the app; per-node "all five synced" for diag/ | `params_set_owner_offline()`, `params_node_synced()` | §7 (Het, 11 Nov 2026) |
+| Owner-offline flag per parameter, copied from diag/ by the app; per-node "all five synced" for diag/ | `params_set_owner_offline()`, `params_node_synced()` | §7 |
 | `value_rejected` counter, added to comm's error summary by the app | `params_value_rejected()` | §5.7 |
 | Simulated sensors: float → sine, int → ramp, bool → toggle, each at its own sample period | `param_source.c` | §6.3 |
 
-## Parameter table (Het, 11 Nov 2026)
+## Parameter table
 
 Every node uses the same 5-slot layout, so each type and sample period runs on all four nodes. Names are "Param 1" … "Param 20". P1–P5 belong to MCU1, P6–P10 to MCU2, P11–P15 to MCU3, P16–P20 to MCU4.
 
@@ -33,7 +33,7 @@ Every node uses the same 5-slot layout, so each type and sample period runs on a
 | 4 | uint32 | 500 ms | 1500 ms | 0 … UINT32_MAX | Ramp 0 … 10000, step 100·N |
 | 5 | bool | 1000 ms | 3000 ms | 0 … 1 | Toggle |
 
-Ranges are each type's full domain for now (Het, 11 Nov 2026). Check 8 therefore only rejects what can never be a value: a float NaN or infinity, a bool other than 0 or 1. Real limits per parameter are a change to `system_table.c` alone.
+Ranges are each type's full domain for now. Check 8 therefore only rejects what can never be a value: a float NaN or infinity, a bool other than 0 or 1. Real limits per parameter are a change to `system_table.c` alone.
 
 ## Database rules as implemented
 
@@ -47,7 +47,7 @@ Received block from node X (comm/ has already passed checks 1–7), for each of 
 | 2 SOURCE_FAULT | Any | INVALID | Old kept | — (the owner's own report, not a transport error) |
 | 3 reserved | Any | INVALID | Old kept | +1 |
 
-In every row the parameter's sequence becomes the block's sequence and its `last_update_ms` the block's arrival time (Het, 11 Nov 2026: the frame did arrive). So an INVALID parameter stays FRESH while blocks keep coming and shows as INVALID + FRESH; it is not synced either way. Blocks that claim this node's own parameters are ignored.
+In every row the parameter's sequence becomes the block's sequence and its `last_update_ms` the block's arrival time (the frame did arrive). So an INVALID parameter stays FRESH while blocks keep coming and shows as INVALID + FRESH; it is not synced either way. Blocks that claim this node's own parameters are ignored.
 
 Freshness, every 5 ms:
 
@@ -59,7 +59,7 @@ Freshness, every 5 ms:
 
 All ages use unsigned subtraction, so they stay correct when the ms counter wraps. Own parameters send SOURCE_STALE until their first sample.
 
-## Settle rule (Design Document open item 2, Het, 11 Nov 2026)
+## Settle rule (Design Document open item 2)
 
 **Problem.** When a node loses the bus, the frames already in its Tx FIFO (up to 4) stay pending. At reconnect they go out first, back-to-back, with values from before the outage. Their CRC is good and their sequence follows the last one received (sends that found the FIFO full used no number), so comm/ accepts them, and their arrival time is new. Without a rule, receivers would mark 1-second-old values FRESH until the sender's next new block, about 10 ms later.
 
@@ -94,7 +94,7 @@ While a sender is settling, `params_update_freshness()` keeps its parameters STA
 | `report_task` | 1 s, at 5 ms offset | `comm_debug_report()`, `params_debug_report()`, `diag_debug_report()` |
 | Main loop | Every pass | Accepted parameter blocks from `comm_receive()` go to `params_apply_block(source, block, sequence, rx_time)` |
 
-**Owner-offline flag** (Het, 11 Nov 2026). Each parameter carries `owner_offline`, true while diag/ sees its owner as OFFLINE. The app copies it from diag/; params/ never decides it. Values, validity and freshness are untouched: by the time a node is OFFLINE (≈350 ms) its parameters have been STALE for over 300 ms. A node in NO_HEARTBEAT (heartbeats lost, data still proper) is not flagged. Each change is logged: `MCU1 t=5350 db OWNER_OFFLINE 11 12 13 14 15`, and `OWNER_ONLINE` when its heartbeat returns.
+**Owner-offline flag**. Each parameter carries `owner_offline`, true while diag/ sees its owner as OFFLINE. The app copies it from diag/; params/ never decides it. Values, validity and freshness are untouched: by the time a node is OFFLINE (≈350 ms) its parameters have been STALE for over 300 ms. A node in NO_HEARTBEAT (heartbeats lost, data still proper) is not flagged. Each change is logged: `MCU1 t=5350 db OWNER_OFFLINE 11 12 13 14 15`, and `OWNER_ONLINE` when its heartbeat returns.
 
 **`params_node_synced(node)`**: true when all five of node's parameters are VALID and FRESH here. diag/ uses it to tell NO_HEARTBEAT from OFFLINE.
 
@@ -132,16 +132,16 @@ MCU1 val 1=3054676940 2=1130142809 ... 20=1
 
 | Item | Design Document | Now |
 |---|---|---|
-| Ranges | min/max per parameter | Full type domain for now (Het, 11 Nov 2026) |
-| INVALID value | "The old value is kept but flagged" | Also: timestamp and sequence move on, so INVALID + FRESH while blocks arrive (Het, 11 Nov 2026) |
-| `value_rejected` | Listed with comm's counters | Counted in params/; the heartbeat summary is comm's sum + params/' counter (Het, 11 Nov 2026, option 1) |
-| SOURCE_FAULT from the owner | INVALID | INVALID, not counted in `value_rejected`; reserved code 3 is INVALID and counted (Het, 11 Nov 2026) |
-| Own parameter before its first sample | Not specified | Sent as SOURCE_STALE (Het, 11 Nov 2026) |
-| Own value that fails check 8 | Not specified | Old value kept, INVALID, sent as SOURCE_FAULT, not counted (Het, 11 Nov 2026) |
-| `val` debug line | Not specified | Raw 4 bytes as uint32, for exact comparison between nodes (Het, 11 Nov 2026) |
+| Ranges | min/max per parameter | Full type domain for now |
+| INVALID value | "The old value is kept but flagged" | Also: timestamp and sequence move on, so INVALID + FRESH while blocks arrive |
+| `value_rejected` | Listed with comm's counters | Counted in params/; the heartbeat summary is comm's sum + params/' counter |
+| SOURCE_FAULT from the owner | INVALID | INVALID, not counted in `value_rejected`; reserved code 3 is INVALID and counted |
+| Own parameter before its first sample | Not specified | Sent as SOURCE_STALE |
+| Own value that fails check 8 | Not specified | Old value kept, INVALID, sent as SOURCE_FAULT, not counted |
+| `val` debug line | Not specified | Raw 4 bytes as uint32, for exact comparison between nodes |
 | Sensor sampling | Separate per-parameter sample periods | Kept, but called from the 10 ms send task (see above) |
-| Old Tx frames after reconnect | Open item 2 | Settle rule at the receiver (Het, 11 Nov 2026) |
+| Old Tx frames after reconnect | Open item 2 | Settle rule at the receiver |
 
 ## Open items
 
-1. **Restart and OFFLINE: decided** (Het, 11 Nov 2026). An OFFLINE node's values are kept (STALE) and marked with the owner-offline flag; see "How the app uses it".
+1. **Restart and OFFLINE: decided**. An OFFLINE node's values are kept (STALE) and marked with the owner-offline flag; see "How the app uses it".

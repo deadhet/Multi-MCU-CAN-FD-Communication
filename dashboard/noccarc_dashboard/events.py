@@ -1,7 +1,7 @@
 """EVENT frames (§8.3): in words, and replayed as state.
 
-MCU1 looks for changes right after anything that can make one (change counts in diag/ and params/;
-Het, 13 Nov 2026: events option b), compares its state with the previous look and sends one event
+MCU1 looks for changes right after anything that can make one (change counts in diag/ and params/,
+events option b), compares its state with the previous look and sends one event
 per kind of change, naming every node or parameter that made it as a bit mask (bit n-1 = MCUn or Pn).
 Every change is reported, however short.
 

@@ -262,20 +262,20 @@ A UART cannot resend, so this does not recover anything. It makes every loss vis
 
 | Decision | Chosen | Rejected, and why |
 |---|---|---|
-| Payload | **Protobuf**, one schema; nanopb on MCU1 (Het, 12 Nov 2026) | *Hand-packed fixed layout* (Design Document v0.3): smaller (≈300 B against ≈437 B), but C packing and Python unpacking must be kept equal by hand, and any change breaks an older dashboard. *Text/JSON lines:* several times larger, float formatting and parsing cost on the MCU, no integrity check. *CBOR/MessagePack:* no schema, usually `malloc`, no maximum size known at compile time. *protobuf-c:* needs `malloc`. (The Design Document had listed Protobuf as future scope.) |
+| Payload | **Protobuf**, one schema; nanopb on MCU1 | *Hand-packed fixed layout* (Design Document v0.3): smaller (≈300 B against ≈437 B), but C packing and Python unpacking must be kept equal by hand, and any change breaks an older dashboard. *Text/JSON lines:* several times larger, float formatting and parsing cost on the MCU, no integrity check. *CBOR/MessagePack:* no schema, usually `malloc`, no maximum size known at compile time. *protobuf-c:* needs `malloc`. (The Design Document had listed Protobuf as future scope.) |
 | Framing | **COBS + `0x00`** | *Sync header + length:* the sync bytes can occur inside data, so finding the next frame after an error needs a search confirmed by the CRC. *SLIP:* escaping can double a frame, so buffers cannot be sized tightly. *Length prefix only:* one corrupted length byte loses sync. |
 | Integrity | **CRC-16/CCITT-FALSE**, the CAN function | *Parity:* catches only odd numbers of bit errors per byte, costs 10 % of throughput (11 bits per byte), and PC drivers report it inconsistently. *No check:* UART noise would reach the screen. One tested CRC function serves both links. |
 | Baud | **230,400** | *115,200:* the ≈4,900 B/s measured would be ≈42 % of its 11,520 B/s, over the 30 % ceiling. *460,800, 921,600:* not needed at ≈21 % load. A lower rate keeps more margin for clock error, cables and adapters. |
 | Flow control | **None** | *RTS/CTS:* the link is one-way, the PC reads far faster than 23 KB/s, and MCU1 never waits anyway. |
 | After an error | **Drop the frame**; the next snapshot (≤100 ms) restores the view | *Retransmission:* needs a return channel and buffering on MCU1, and the resent data is older than the next snapshot. |
 | Messages | **SNAPSHOT + EVENT + CONFIG** | *Snapshots only:* a state shorter than 100 ms would never be seen. *Delta snapshots:* one lost frame corrupts the view until the next full one. |
-| Busy link | **Latest wins**, two buffers per kind, event queue (Het, 12 Nov 2026) | *Ring buffer with a 256 B reserve* (Design Document §8.4): after a stall it sends a backlog of old snapshots; latest wins always sends the newest and suits a DMA. |
+| Busy link | **Latest wins**, two buffers per kind, event queue | *Ring buffer with a 256 B reserve* (Design Document §8.4): after a stall it sends a backlog of old snapshots; latest wins always sends the newest and suits a DMA. |
 | Number of a frame never sent | **Used up and counted** (`frames_skipped`) | *Reused:* replaced frames would be invisible, and gaps could not be explained. |
-| Finding changes for events | **Change counts, a look after every possible change** (Het, 13 Nov 2026) | *Hooks in diag/ and params/:* they would call monitor/, against the module rule (Design Document §4.4). *Sampling every 5 ms* (built 12 Nov): it missed MCU1's 6 ms RESYNCING at boot in S2. |
+| Finding changes for events | **Change counts, a look after every possible change** | *Hooks in diag/ and params/:* they would call monitor/, against the module rule (Design Document §4.4). *Sampling every 5 ms* (built 12 Nov): it missed MCU1's 6 ms RESYNCING at boot in S2. |
 | Event size | **Grouped:** one event per kind of change, bit mask | *One per parameter or node:* five frames when one node drops off, although its parameters change together. |
-| Health | **The weaker** of online/4 and synced/20 (Het, 12 Nov 2026) | *Average:* 4/4 online with 0/20 synchronised would show 50 % for a network that delivers no data. |
-| Online count | **ONLINE or LATE** (Het, 13 Nov 2026) | *ONLINE only:* a late heartbeat dropped health from 100 % to 75 % even while the node's data kept arriving, though one late heartbeat is not yet a failure. |
-| Uptime | **uint32 ms, unwrapped on the PC** (Het, 12 Nov 2026) | *Seconds on the MCU:* loses the ms resolution event times need. |
+| Health | **The weaker** of online/4 and synced/20 | *Average:* 4/4 online with 0/20 synchronised would show 50 % for a network that delivers no data. |
+| Online count | **ONLINE or LATE** | *ONLINE only:* a late heartbeat dropped health from 100 % to 75 % even while the node's data kept arriving, though one late heartbeat is not yet a failure. |
+| Uptime | **uint32 ms, unwrapped on the PC** | *Seconds on the MCU:* loses the ms resolution event times need. |
 | Debug text | **Separate UART** (USART1) | *Inside this protocol:* log volume would use the link's budget and mix two purposes. |
 
 ## 11. Verification

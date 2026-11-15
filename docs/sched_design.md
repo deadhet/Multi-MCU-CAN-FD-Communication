@@ -9,7 +9,7 @@ A cooperative, time-triggered task table (a "super-loop"). Every pass of `main()
 2. `sched_run_due()`: walks the table in order. For each task it reads the ms clock, and if `now - last_run >= period` it sets `last_run = now` and runs the task to the end.
 3. The app drains the CAN receive queues.
 
-MCU1 also looks for UART-link events outside the table (Het, 13 Nov 2026: events option b): after step 2 and after each CAN frame in step 3, only when diag/'s or params/'s change count moved, and before every snapshot. It replaced a 5 ms `event` task, which missed states shorter than 5 ms. Its time is inside `pass`.
+MCU1 also looks for UART-link events outside the table: after step 2 and after each CAN frame in step 3, only when diag/'s or params/'s change count moved, and before every snapshot. It replaced a 5 ms `event` task, which missed states shorter than 5 ms. Its time is inside `pass`.
 
 Tasks never interrupt each other; only interrupts do (FDCAN, then SysTick, then the UARTs). So every task must be short and must never wait. Table order decides who goes first when several are due in the same pass. The report runs before the snapshot on MCU1, so both show the same values.
 
@@ -18,7 +18,7 @@ Tasks never interrupt each other; only interrupts do (FDCAN, then SysTick, then 
 | All | `param` 10 ms (10), `fresh` 5 ms (5), `diag` 5 ms (5), `hb` 100 ms (0), `report` 1000 ms (5) |
 | MCU1 | also `snap` 100 ms (5), `cfg` 1000 ms (0) |
 
-## Measurements (Het, 12 Nov 2026: measure first)
+## Measurements
 
 Worst cases since boot, printed in the 1 s report:
 
@@ -56,7 +56,7 @@ Its trade-offs:
 - Under overload, tasks late in the table starve.
 - Like today, a long task still blocks the others.
 
-Decision (Het, 12 Nov 2026): measure first, and switch only if the measurements show lateness that matters. So far:
+Decision: measure first, and switch only if the measurements show lateness that matters. So far:
 - 1 ms late starts, on MCU1 only, caused by Renode's slow encode.
 - A 1 ms shift of the 1 s report.
 - No drift of the 10 ms sends.

@@ -1,4 +1,4 @@
-"""MCU1's uptime as the dashboard shows it: computed here, not on the MCU (Het, 12 Nov 2026).
+"""MCU1's uptime as the dashboard shows it: computed here, not on the MCU.
 
 MCU1 sends its uptime as a uint32 count of milliseconds, which wraps to 0 after 2^32 ms
 (49.7 days). The firmware never needs the total: it only subtracts nearby times, and that stays

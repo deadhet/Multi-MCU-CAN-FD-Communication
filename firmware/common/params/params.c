@@ -16,7 +16,7 @@
  * so two lost frames in a row are tolerated. */
 #define TRANSPORT_STALE_MS 30U
 
-/* Settle rule (Design Document open item 2, Het, 11 Nov 2026). After a sender was silent for
+/* Settle rule (Design Document open item 2). After a sender was silent for
  * more than TRANSPORT_STALE_MS, its parameters stay STALE until one of its blocks arrives
  * SETTLE_MIN_GAP_MS to TRANSPORT_STALE_MS after the previous one, the normal 10 ms beat.
  * Frames left in the sender's Tx FIFO by a disconnect go out back-to-back at reconnect with
@@ -125,7 +125,7 @@ bool params_set_local(uint8_t id, param_value_t value, uint32_t now_ms)
         set_validity(e, PARAM_INVALID); /* Old value kept, flagged */
         e->source_status = (uint8_t)PARAM_SOURCE_FAULT;
     }
-    /* A sample was taken either way, so the timestamp moves on (Het, 11 Nov 2026). */
+    /* A sample was taken either way, so the timestamp moves on. */
     e->seq++;
     e->last_update_ms = now_ms;
     return ok;
@@ -191,7 +191,7 @@ void params_apply_block(uint8_t node, const comm_param_block_t *block, uint32_t 
             set_validity(e, PARAM_VALID);
         }
         /* An INVALID value keeps the old content, but the timestamp and sequence still move on,
-         * because the frame did arrive (Het, 11 Nov 2026). */
+         * because the frame did arrive. */
         e->source_status = status;
         e->seq = seq;
         e->last_update_ms = rx_time_ms;

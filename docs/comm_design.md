@@ -65,7 +65,7 @@ Heartbeat, 16 bytes:
 
 A frame only changes stream state after passing check 7. Rejected frames change nothing: for params/ and diag/ they never arrived, so a node whose heartbeats all fail the CRC counts as silent.
 
-**Rejected frames are logged** (Het, 11 Nov 2026), by reason, within §8.6: the first rejection of a reason at once, then at most one line per second per reason with the count since the previous line; the 1 s report flushes the rest. A node sending 100 bad frames a second costs one line a second.
+**Rejected frames are logged**, by reason, within §8.6: the first rejection of a reason at once, then at most one line per second per reason with the count since the previous line; the 1 s report flushes the rest. A node sending 100 bad frames a second costs one line a second.
 
 ```
 MCU1 t=500 rx rejected crc id=50 n=1
@@ -115,12 +115,12 @@ Scripts are in `renode/tests/` (moved there 13 Nov 2026). Rerunning one writes i
 
 Node 2's own counters stayed 0 in every case, and the other streams were unaffected.
 
-## Changed from the Design Document (11 Nov 2026, Het's decision)
+## Changed from the Design Document
 
 §4.3 specifies one 32-slot CAN Rx ring that drops the newest frame when full. Now there are 4 RAM queues of 8 slots: one for heartbeats (and our own IDs), one per peer for parameter blocks. Each keeps its newest frames by lap detection, with no interrupt masking and one writer per index (`docs/fdcan_design.md`, receive path). Reasons: after a main-loop stall the old ring delivered data 410–500 ms old, and one flooding node could fill the shared ring for everyone. The hardware Rx FIFO stays in blocking mode. The Design Document PDF itself is not changed.
 
 ## Open items
 
 1. **Restart vs the sequence rule: decided, option B (11 Nov 2026).** See the restart rule above. If the boot heartbeat is lost, the next one (still BOOT, or lower uptime) triggers it; if all are lost, diag/ marks the node OFFLINE and calls `comm_forget_peer()` (≈350 ms). The uptime path is tested once diag/ reports states other than BOOT.
-2. **Stale queued frames after reconnect: decided, params/ settle rule (Het, 11 Nov 2026).** The 4 frames held in the Tx FIFO go out first and carry values from before the disconnect (Stage 0 finding, confirmed here). They pass every check, so comm/ still accepts them; params/ stores them but keeps the sender's parameters STALE until a block arrives on the 10 ms beat. See `docs/params_design.md`, settle rule. Cancelling them at the sender (`TXBCR`) was not used: it jams Renode's Tx FIFO.
+2. **Stale queued frames after reconnect: decided, params/ settle rule.** The 4 frames held in the Tx FIFO go out first and carry values from before the disconnect (Stage 0 finding, confirmed here). They pass every check, so comm/ still accepts them; params/ stores them but keeps the sender's parameters STALE until a block arrives on the 10 ms beat. See `docs/params_design.md`, settle rule. Cancelling them at the sender (`TXBCR`) was not used: it jams Renode's Tx FIFO.
 3. **Check 8: done in params/ (Stage 5).**

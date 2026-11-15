@@ -91,7 +91,7 @@ def fmt_age(ms: int) -> str:
 
 
 def health_label(pct: int) -> tuple[str, str]:
-    """Het, 13 Nov 2026: 100 % HEALTHY, 1-99 % DEGRADED, 0 % DOWN."""
+    """100 % HEALTHY, 1-99 % DEGRADED, 0 % DOWN."""
     if pct >= 100:
         return "HEALTHY", ""
     if pct <= 0:

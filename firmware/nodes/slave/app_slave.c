@@ -77,7 +77,7 @@ static void heartbeat_task(void)
 /* §7.2: heartbeat timeouts and the own state, every 5 ms. diag/ calls no other service (§4.4),
  * so the app carries its results: a peer that went OFFLINE is forgotten in comm/, so its next
  * frame is accepted whatever its sequence (§5.6), and its parameters get the owner-offline flag
- * in params/ (Het, 11 Nov 2026). params/ tells diag/ whose data still arrives properly, which
+ * in params/. params/ tells diag/ whose data still arrives properly, which
  * makes a peer with silent heartbeats NO_HEARTBEAT instead of OFFLINE. */
 static void diag_task(void)
 {

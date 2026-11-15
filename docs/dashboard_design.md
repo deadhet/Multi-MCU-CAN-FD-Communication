@@ -13,7 +13,7 @@ Covers `dashboard/noccarc_dashboard/` (`link.py`, `model.py`, `server.py`, `web/
 
 The page opens at `http://127.0.0.1:8765/` (`--http-port` to change, `--no-browser` to not open it). `--lost-ms 1500` for Renode: it runs at about 0.3× real time on the development PC, so a snapshot reaches the PC only every ≈0.4 s.
 
-## Technology (Het, 13 Nov 2026)
+## Technology
 
 A web page served by Python's standard library, chosen over Tkinter (the assignment allows "Python GUI or web-based interface"). No new dependencies.
 
@@ -72,9 +72,9 @@ Style of a high-performance HMI (after ANSI/ISA-101, operator displays in proces
 | RECOVERING, UNKNOWN (not heard yet), BOOT, RESYNCING, MCU1 restarted | in transition | blue ● |
 | NEVER RECEIVED, n/a, no data | none | grey text |
 
-Health label (Het, 13 Nov 2026): 100 % HEALTHY, 1–99 % DEGRADED, 0 % DOWN; NO DATA while the link is not CONNECTED.
+Health label: 100 % HEALTHY, 1–99 % DEGRADED, 0 % DOWN; NO DATA while the link is not CONNECTED.
 
-Controllers online (Het, 13 Nov 2026): MCU1 plus every peer that is ONLINE or **LATE**. A late heartbeat while the node's data keeps arriving is not yet a failure, so health does not dip for it. A node that stops sending altogether still lowers health within 30 ms, through synced/20, when its parameters go STALE. OFFLINE, RECOVERING, NO_HEARTBEAT and DATA_INVALID do not count. The rule is in the firmware (`monitor_online_count()`); the dashboard shows MCU1's figure.
+Controllers online: MCU1 plus every peer that is ONLINE or **LATE**. A late heartbeat while the node's data keeps arriving is not yet a failure, so health does not dip for it. A node that stops sending altogether still lowers health within 30 ms, through synced/20, when its parameters go STALE. OFFLINE, RECOVERING, NO_HEARTBEAT and DATA_INVALID do not count. The rule is in the firmware (`monitor_online_count()`); the dashboard shows MCU1's figure.
 
 ### Section 2 columns from diag/'s link state
 

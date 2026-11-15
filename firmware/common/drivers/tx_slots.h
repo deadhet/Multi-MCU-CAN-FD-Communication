@@ -1,6 +1,5 @@
-/* Latest-wins transmit slots for the UART link (Design Document §8.4 as revised by Het,
- * 12 Nov 2026). Logic only, no hardware, so the PC tests run it too; drivers/uart_link.c adds
- * the hardware.
+/* Latest-wins transmit slots for the UART link (Design Document §8.4, revised). Logic only,
+ * no hardware, so the PC tests run it too; drivers/uart_link.c adds the hardware.
  *
  * One slot per kind of frame (SNAPSHOT, CONFIG), each with two buffers:
  *   - the mover (the UART interrupt now; a DMA on hardware later) may be sending one of them;

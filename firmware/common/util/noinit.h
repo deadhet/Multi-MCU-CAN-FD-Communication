@@ -1,5 +1,5 @@
 /* NOINIT_RAM: puts a variable in the .noinit section, in AXI SRAM at 0x24000000 (see
- * firmware/linker/stm32h743vit6.ld). Decided by Het, 12 Nov 2026.
+ * firmware/linker/stm32h743vit6.ld).
  *
  * - Start-up does not clear it: the startup code clears only .bss (in DTCM), so big buffers here
  *   do not make a node start later than the others.

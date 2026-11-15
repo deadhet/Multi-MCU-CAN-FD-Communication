@@ -6,7 +6,7 @@
 /* §6.3: the owner reports SOURCE_STALE when its own sample is older than 3 x its sample period. */
 #define SOURCE_STALE_FACTOR 3U
 
-/* Ranges are each type's full domain for now (Het, 11 Nov 2026), so check 8 only rejects what
+/* Ranges are each type's full domain for now, so check 8 only rejects what
  * can never be a value: a float NaN or infinity, a bool other than 0 or 1. Real limits per
  * parameter go here later; nothing else changes. */
 #define FLOAT_ANY .min = { .f = -FLT_MAX }, .max = { .f = FLT_MAX }
@@ -18,7 +18,7 @@
     { .id = (id_), .name = "Param " #id_, .owner = (owner_), .type = (type_), range_,           \
       .sample_period_ms = (period_ms_), .source_stale_ms = SOURCE_STALE_FACTOR * (period_ms_) }
 
-/* Every node uses the same 5-slot layout (Het, 11 Nov 2026), so each type and each sample
+/* Every node uses the same 5-slot layout, so each type and each sample
  * period runs on all four nodes. */
 #define NODE_PARAMS(owner_, p1, p2, p3, p4, p5)                \
     PARAM(p1, owner_, PARAM_TYPE_FLOAT32, FLOAT_ANY, 10U),     \

@@ -44,7 +44,7 @@ static int logged(const char *text)
     return strstr(log_buf, text) != NULL;
 }
 
-/* Change count (events option b, Het 13 Nov 2026). After every diag/ call in every test below,
+/* Change count (events option b). After every diag/ call in every test below,
  * diag_change_count() must have moved if and only if something the UART link reports changed:
  * a peer's link state or restart count, or the own state. A change it misses would never be
  * sent as an event, so each transition these tests drive also checks its count. */

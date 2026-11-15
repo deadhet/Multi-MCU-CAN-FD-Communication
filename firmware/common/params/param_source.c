@@ -15,7 +15,7 @@
 #define FIRST_OWN_ID ((((uint32_t)NODE_ID - 1U) * PARAMS_PER_NODE) + 1U)
 #define TWO_PI       6.2831853f
 
-/* Ramp limits stay inside the preview values Het chose (int -1000..1000, uint 0..10000). */
+/* Ramp limits stay inside the chosen preview values (int -1000..1000, uint 0..10000). */
 #define INT_RAMP_MIN  (-1000)
 #define INT_RAMP_MAX  1000
 #define INT_RAMP_STEP (10 * (int32_t)NODE_ID)

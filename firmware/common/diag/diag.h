@@ -1,7 +1,7 @@
 /* Node health (Design Document §7). Every node runs it: it tracks each peer's link state from
  * its heartbeats, counts missed heartbeats, restarts and recoveries, and keeps this node's own
  * state (BOOT, RESYNCING, OPERATIONAL) for its heartbeat. It only detects and reports; it takes
- * no fault actions (Het, 11 Nov 2026).
+ * no fault actions.
  *
  * It calls no other service (§4.4, calls only go downward). The app feeds it heartbeats,
  * parameter blocks and each peer's data status, and acts on what it returns: it forgets a peer
@@ -60,7 +60,7 @@ bool diag_peer_offline(uint8_t node);   /* For params_set_owner_offline() */
 
 /* Goes up by one on every change the UART link reports as an event: a peer's link state, a
  * restart, the own state. MCU1 looks for events only when this or params_change_count() moved
- * (Het, 13 Nov 2026: events option b), right after the call that made the change, so even a
+ * (events option b), right after the call that made the change, so even a
  * state that lasts under a millisecond is reported. 0 after diag_init(). */
 uint32_t diag_change_count(void);
 

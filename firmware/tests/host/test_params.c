@@ -48,7 +48,7 @@ static int logged(const char *text)
     return strstr(log_buf, text) != NULL;
 }
 
-/* Change count (events option b, Het 13 Nov 2026). After every params/ call that can change
+/* Change count (events option b). After every params/ call that can change
  * something in every test below, params_change_count() must have moved if and only if a
  * parameter's validity, freshness or owner-offline flag changed: those are the changes the
  * UART link sends as events, and one the count misses would never be sent. */
@@ -389,7 +389,7 @@ static void test_check8(void)
     param_entry_t e = get(1U, 110U);
     CHECK(e.validity == PARAM_INVALID && e.value.f == 1.5f); /* Old value kept */
     CHECK(e.last_update_ms == 110U && e.seq == 2U);          /* Timestamp still moves on */
-    CHECK(e.freshness == PARAM_FRESH);                       /* INVALID + FRESH (Het, 11 Nov) */
+    CHECK(e.freshness == PARAM_FRESH);                       /* INVALID + FRESH */
     e = get(2U, 110U);
     CHECK(e.validity == PARAM_INVALID && e.value.f == -2.25f && e.source_status == PARAM_SOURCE_FAULT);
     e = get(3U, 110U);

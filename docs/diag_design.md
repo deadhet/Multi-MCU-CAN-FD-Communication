@@ -2,17 +2,17 @@
 
 Covers `firmware/common/diag/` and how the apps use it: assignment Stage 3 (heartbeat monitoring and fault detection) and Stage 4 (recovery and re-synchronisation). Section numbers (§) refer to the Design Document. Every node runs diag/: each needs to see its peers' states, and MCU1 additionally reports them (UART link, a later stage).
 
-diag/ only detects and reports; it takes no fault actions (Het, 11 Nov 2026). It calls no other service (§4.4, calls only go downward). The app feeds it heartbeats, parameter blocks and each peer's data status, and carries out what it returns. Times are passed in, so the module also runs on a PC.
+diag/ only detects and reports; it takes no fault actions. It calls no other service (§4.4, calls only go downward). The app feeds it heartbeats, parameter blocks and each peer's data status, and carries out what it returns. Times are passed in, so the module also runs on a PC.
 
 ## What it does
 
 | Job | Where | Design |
 |---|---|---|
-| Link state per peer: UNKNOWN, ONLINE, LATE, OFFLINE, RECOVERING, NO_HEARTBEAT, DATA_INVALID | `diag_on_heartbeat()`, `diag_on_param_block()`, `diag_update()` | §7.2, plus NO_HEARTBEAT and DATA_INVALID (Het) |
+| Link state per peer: UNKNOWN, ONLINE, LATE, OFFLINE, RECOVERING, NO_HEARTBEAT, DATA_INVALID | `diag_on_heartbeat()`, `diag_on_param_block()`, `diag_update()` | §7.2, plus NO_HEARTBEAT and DATA_INVALID |
 | Missed heartbeat count per peer, from the time since its last heartbeat | `diag_update()` | §7.2 |
 | Restart count per peer: comm/'s restart flag, or the uptime went down and that was not a wrap past 2^32 (49.7 days) | `diag_on_heartbeat()` | §7.3 |
 | Recovery count per peer (RECOVERING → ONLINE) | `diag_on_heartbeat()` | §7.2 |
-| Own state BOOT, RESYNCING, OPERATIONAL, sent in this node's heartbeat | `diag_own_state()` | §7.4, rules by Het |
+| Own state BOOT, RESYNCING, OPERATIONAL, sent in this node's heartbeat | `diag_own_state()` | §7.4, with the rules below |
 | One log line per change; a summary line every second | `log_peer()`, `diag_debug_report()` | §8.6 |
 | Copy of a peer's state for monitor/ (GUI, later) | `diag_get_peer()` | §8.3 |
 
@@ -36,19 +36,19 @@ diag/ only detects and reports; it takes no fault actions (Het, 11 Nov 2026). It
 
 The first heartbeat counts as missed at 150 ms (1.5 × period absorbs the ≈2 ms worst-case delay), each further one 100 ms later. One lost heartbeat therefore makes a node LATE but never OFFLINE. diag/ runs every 5 ms, so a change is seen 0–4 ms after its boundary. The count resets to 0 on every heartbeat.
 
-**The first heartbeat after OFFLINE only means RECOVERING** (Het, 11 Nov 2026). It can never also confirm the recovery, even if it says OPERATIONAL. After a reconnect, the first heartbeat may be an old one left in the sender's Tx FIFO: it was sent before the sender lost the bus and still reports the state from then (the same cause as Design Document open item 2, which the settle rule handles for parameters). Only a later heartbeat that reports OPERATIONAL makes the peer ONLINE. The same applies after a restart, whose first heartbeat says BOOT anyway.
+**The first heartbeat after OFFLINE only means RECOVERING**. It can never also confirm the recovery, even if it says OPERATIONAL. After a reconnect, the first heartbeat may be an old one left in the sender's Tx FIFO: it was sent before the sender lost the bus and still reports the state from then (the same cause as Design Document open item 2, which the settle rule handles for parameters). Only a later heartbeat that reports OPERATIONAL makes the peer ONLINE. The same applies after a restart, whose first heartbeat says BOOT anyway.
 
-**NO_HEARTBEAT** (Het, 11 Nov 2026). A peer whose heartbeats stopped but whose parameters still arrive VALID and FRESH (`params_node_synced()`) is alive, with only its heartbeat path failing. It is reported as NO_HEARTBEAT, not OFFLINE: it is not forgotten in comm/ and its parameters do not get the owner-offline flag. A peer whose heartbeats are rejected (bad CRC, for example) counts as not heard: rejected frames never reach diag/.
+**NO_HEARTBEAT**. A peer whose heartbeats stopped but whose parameters still arrive VALID and FRESH (`params_node_synced()`) is alive, with only its heartbeat path failing. It is reported as NO_HEARTBEAT, not OFFLINE: it is not forgotten in comm/ and its parameters do not get the owner-offline flag. A peer whose heartbeats are rejected (bad CRC, for example) counts as not heard: rejected frames never reach diag/.
 
-**DATA_INVALID** (Het, 12 Nov 2026), the mirror image of NO_HEARTBEAT. A peer whose heartbeats arrive but from which no parameter block has passed checks 1–7 for 350 ms (its blocks are rejected, for example a bad CRC, or missing) is alive with a broken data path. Without this state, every node that hears it would wait for its data forever and stay RESYNCING. A DATA_INVALID peer is not waited for, so the others go OPERATIONAL with the parameters they do have (`synced=15`). It is not OFFLINE: its heartbeats arrive, it is not forgotten in comm/ and its parameters do not get the owner-offline flag (they are NEVER_RECEIVED or STALE in params/ anyway). Only an accepted block makes it ONLINE again; its heartbeats do not, or it would flap on every heartbeat. If its heartbeats stop too, it goes LATE and then OFFLINE. 350 ms is the same verdict time as OFFLINE: blocks come every 10 ms, so one short burst of bad frames never changes the node's state. Values that pass checks 1–7 but fail check 8 are a parameter matter (INVALID in params/), not a node state.
+**DATA_INVALID**, the mirror image of NO_HEARTBEAT. A peer whose heartbeats arrive but from which no parameter block has passed checks 1–7 for 350 ms (its blocks are rejected, for example a bad CRC, or missing) is alive with a broken data path. Without this state, every node that hears it would wait for its data forever and stay RESYNCING. A DATA_INVALID peer is not waited for, so the others go OPERATIONAL with the parameters they do have (`synced=15`). It is not OFFLINE: its heartbeats arrive, it is not forgotten in comm/ and its parameters do not get the owner-offline flag (they are NEVER_RECEIVED or STALE in params/ anyway). Only an accepted block makes it ONLINE again; its heartbeats do not, or it would flap on every heartbeat. If its heartbeats stop too, it goes LATE and then OFFLINE. 350 ms is the same verdict time as OFFLINE: blocks come every 10 ms, so one short burst of bad frames never changes the node's state. Values that pass checks 1–7 but fail check 8 are a parameter matter (INVALID in params/), not a node state.
 
 **Restarts** (§7.3). comm/ flags a restart (option B) only while it still tracks the sender. When a peer went OFFLINE, comm/ has forgotten it, so a reset during the outage (scenario S2) carries no flag. diag/ therefore also counts a restart when a peer's uptime goes down. A halted node that resumes keeps a rising uptime, so it is not counted.
 
-**Uptime wrap** (Het, 12 Nov 2026). The uptime is a uint32 ms count: every 49.7 days it passes 2^32 and starts again at 0, which also makes it "go down". A wrap moves the count forward, through 2^32, by about the time that passed at the receiver since the previous heartbeat; a restart leaves it far from that. So a lower uptime counts as a restart only if that forward step exceeds the time passed by more than `UPTIME_SLACK_MS` (1000 ms). Without a restart the two differ only by clock rounding (≤ 2 ms), by how much later the previous heartbeat arrived after it was made (under ≈350 ms while the peer stays connected), and by crystal drift (≤ 100 ppm). Smaller slack risks counting a real wrap as a restart; larger slack lets a reset that lands within the slack before the peer's own wrap pass as a wrap. Both are limited to the slack around the wrap, once in 49.7 days, and after an outage the peer goes RECOVERING either way, so only the count would be off.
+**Uptime wrap**. The uptime is a uint32 ms count: every 49.7 days it passes 2^32 and starts again at 0, which also makes it "go down". A wrap moves the count forward, through 2^32, by about the time that passed at the receiver since the previous heartbeat; a restart leaves it far from that. So a lower uptime counts as a restart only if that forward step exceeds the time passed by more than `UPTIME_SLACK_MS` (1000 ms). Without a restart the two differ only by clock rounding (≤ 2 ms), by how much later the previous heartbeat arrived after it was made (under ≈350 ms while the peer stays connected), and by crystal drift (≤ 100 ppm). Smaller slack risks counting a real wrap as a restart; larger slack lets a reset that lands within the slack before the peer's own wrap pass as a wrap. Both are limited to the slack around the wrap, once in 49.7 days, and after an outage the peer goes RECOVERING either way, so only the count would be off.
 
 The check runs only when the uptime went down. Comparing every heartbeat's step with the time passed was considered and rejected: it would count a false restart after every reconnect, because an old heartbeat left in the sender's Tx FIFO arrives late (S3, `stage6_old_hb_then_boot.resc`), and the next, fresh heartbeat then steps far ahead of the time passed since that late arrival.
 
-## Own state (Het, 11 Nov 2026)
+## Own state
 
 | Own state | Entered when | Left when |
 |---|---|---|
@@ -56,7 +56,7 @@ The check runs only when the uptime went down. Comparing every heartbeat's step 
 | RESYNCING | (a) After BOOT. (b) OPERATIONAL, and no peer connected any more | Every connected peer has sent a parameter block that comm/ accepted since it was last OFFLINE → OPERATIONAL |
 | OPERATIONAL | As above | No peer connected → RESYNCING |
 
-Connected = ONLINE, LATE, RECOVERING or NO_HEARTBEAT. A DATA_INVALID peer is neither waited for nor counted as connected: no data is exchanged with it (Het, 12 Nov 2026). A node alone (all peers OFFLINE or never heard) never reports OPERATIONAL. Other nodes coming and going do not change a node's own state, so one node's recovery never makes the others report RESYNCING. Accepted limit (Het): if the bus split into two groups of at least 2 nodes each, both could report OPERATIONAL; the debug log shows every node's view of the others. In Renode a split is always one node alone, which stays RESYNCING.
+Connected = ONLINE, LATE, RECOVERING or NO_HEARTBEAT. A DATA_INVALID peer is neither waited for nor counted as connected: no data is exchanged with it. A node alone (all peers OFFLINE or never heard) never reports OPERATIONAL. Other nodes coming and going do not change a node's own state, so one node's recovery never makes the others report RESYNCING. Accepted limit: if the bus split into two groups of at least 2 nodes each, both could report OPERATIONAL; the debug log shows every node's view of the others. In Renode a split is always one node alone, which stays RESYNCING.
 
 This replaces §7.4's "OPERATIONAL when every other node has been decided (ONLINE with valid, fresh parameters, or OFFLINE after 350 ms)".
 
@@ -69,7 +69,7 @@ This replaces §7.4's "OPERATIONAL when every other node has been decided (ONLIN
 | `heartbeat_task` | `state = diag_own_state()` |
 | `report_task` | `diag_debug_report()` after comm/'s and params/' lines |
 
-## Rejected frames in the log (comm/, Het, 11 Nov 2026)
+## Rejected frames in the log (comm/)
 
 Every frame that fails checks 1–7 is logged by reason, within §8.6 (no per-frame logging): the first one of a reason at once, then at most one line per second with the count since the last line. The 1 s report flushes the rest.
 
@@ -140,18 +140,18 @@ S1–S4 run and check themselves: `renode/run_scenarios.sh` plays each scenario,
 
 | Item | Design Document | Now |
 |---|---|---|
-| Fault reactions | Not specified | Detect and report only (Het, 11 Nov 2026) |
-| Own state | §7.4: OPERATIONAL when every other node is decided | BOOT until a heartbeat from any node; RESYNCING until every connected peer has sent a block; back to RESYNCING when no peer is left (Het, 11 Nov 2026) |
-| Peer whose heartbeats stop but whose data is proper | OFFLINE | NO_HEARTBEAT (Het, 11 Nov 2026) |
-| OFFLINE peer's parameters | Not specified | Kept (STALE), plus an owner-offline flag (Het, 11 Nov 2026) |
-| RECOVERING → ONLINE | "Node reports OPERATIONAL with all reachable parameters synced" | A heartbeat reporting OPERATIONAL, never the first one after OFFLINE (Het, 11 Nov 2026) |
+| Fault reactions | Not specified | Detect and report only |
+| Own state | §7.4: OPERATIONAL when every other node is decided | BOOT until a heartbeat from any node; RESYNCING until every connected peer has sent a block; back to RESYNCING when no peer is left |
+| Peer whose heartbeats stop but whose data is proper | OFFLINE | NO_HEARTBEAT |
+| OFFLINE peer's parameters | Not specified | Kept (STALE), plus an owner-offline flag |
+| RECOVERING → ONLINE | "Node reports OPERATIONAL with all reachable parameters synced" | A heartbeat reporting OPERATIONAL, never the first one after OFFLINE |
 | UNKNOWN | Leaves only on the first heartbeat | Also → OFFLINE 350 ms after boot (§7.4 already counts such a node as OFFLINE) |
 | Restart detection | comm/ only | comm/ while tracking, plus diag/ by uptime after OFFLINE |
-| Rejected frames | Counted | Counted and logged, rate limited (Het, 11 Nov 2026) |
-| Peer whose heartbeats arrive but whose blocks all fail | Not specified | DATA_INVALID after 350 ms; not waited for (Het, 12 Nov 2026) |
+| Rejected frames | Counted | Counted and logged, rate limited |
+| Peer whose heartbeats arrive but whose blocks all fail | Not specified | DATA_INVALID after 350 ms; not waited for |
 
 ## Open items
 
-1. **Own state with a broken data path: decided** (Het, 12 Nov 2026): DATA_INVALID, see above.
+1. **Own state with a broken data path: decided**: DATA_INVALID, see above.
 2. **Babbling-node event** (Design Document open item 5): not done.
 3. **Master failure** (§7.5, scenario S4): slaves already treat MCU1 like any peer; the scenario script follows with the Renode stage.

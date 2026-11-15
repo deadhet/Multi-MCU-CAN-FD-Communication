@@ -395,7 +395,7 @@ static void test_latest_wins(void)
 
 static void test_health(void)
 {
-    printf("Health (Het, option b): the weaker of online/4 and synced/20, whole percent, rounded down\n");
+    printf("Health (option b): the weaker of online/4 and synced/20, whole percent, rounded down\n");
     static const struct { uint32_t online, synced, health; } cases[] = {
         { 4U, 20U, 100U }, /* all fine */
         { 3U, 15U, 75U },  /* one controller dead, its 5 parameters with it */
@@ -412,7 +412,7 @@ static void test_health(void)
         CHECK(monitor_health_percent(cases[k].online, cases[k].synced) == cases[k].health);
     }
 
-    /* Online: this node always, peers only when ONLINE or LATE (Het, 13 Nov 2026). */
+    /* Online: this node always, peers only when ONLINE or LATE. */
     monitor_view_t view;
     make_view(&view); /* n2 ONLINE, n3 OFFLINE, n4 UNKNOWN */
     CHECK(monitor_online_count(&view) == 2U);

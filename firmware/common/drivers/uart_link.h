@@ -1,7 +1,7 @@
 /* UART link to the host (Design Document §8.1): USART3 TX on PD8, 230400 baud, 8N1, no flow
  * control, transmit only. MCU1 only.
  *
- * Latest wins (Het, 12 Nov 2026; drivers/tx_slots.h): the caller writes each frame straight into
+ * Latest wins (drivers/tx_slots.h): the caller writes each frame straight into
  * a slot buffer and hands it over. While the link is busy, only the newest frame of each kind
  * waits; an older one still waiting is replaced, never queued behind. The buffers belong to the
  * caller, which puts them in .noinit RAM (util/noinit.h).

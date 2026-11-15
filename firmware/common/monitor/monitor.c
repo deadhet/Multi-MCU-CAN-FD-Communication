@@ -48,7 +48,7 @@ _Static_assert(PAYLOAD_MAX < 65536U, "frame lengths must stay small");
 _Static_assert((int)monitor_LinkState_SELF == (int)(LINK_STATES - 1U), "link states");
 _Static_assert(PARAM_COUNT <= 32U && COMM_NODE_COUNT <= 32U, "event masks are 32 bits");
 
-/* The UART buffers, in .noinit RAM (Het, 12 Nov 2026): start-up does not clear them, and a DMA
+/* The UART buffers, in .noinit RAM: start-up does not clear them, and a DMA
  * can reach them. Each is completely written before it is read. Static, not on the stack: the
  * structs are close to 1 KB each.
  *   snapshot, config     the message, filled field by field, then encoded into frame
@@ -249,7 +249,7 @@ uint32_t monitor_online_count(const monitor_view_t *view)
 
     for (uint8_t node = 1U; node <= COMM_NODE_COUNT; node++) {
         diag_link_t link = view->peers[node - 1U].link;
-        /* LATE counts (Het, 13 Nov 2026): one late heartbeat is not yet a failure. */
+        /* LATE counts: one late heartbeat is not yet a failure. */
         if ((node != NODE_ID) && ((link == DIAG_ONLINE) || (link == DIAG_LATE))) {
             online++;
         }

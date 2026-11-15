@@ -1,7 +1,7 @@
 /* UART link protocol (Design Document §8), MCU1 only. Encodes SNAPSHOT, EVENT and CONFIG messages
  * with nanopb (schema: proto/monitor.proto), wraps each in a frame and hands it to the UART link:
  *   [version << 4 | type][UART sequence, uint32 LE][Protobuf payload][CRC-16 LE] -> COBS -> 0x00
- * Latest wins (§8.4, Het, 12 Nov 2026): while the link is busy, a newer frame of a kind replaces
+ * Latest wins (§8.4): while the link is busy, a newer frame of a kind replaces
  * the older one still waiting; the replaced frame's sequence number is never sent, and the
  * snapshot's frames_skipped counts it, so the host can tell such gaps from bytes lost on the
  * way. Its buffers are in .noinit RAM (util/noinit.h).
@@ -63,25 +63,25 @@ bool monitor_send_snapshot(const monitor_view_t *view);
  * could not be encoded. */
 bool monitor_send_config(const monitor_periods_t *periods);
 
-/* EVENT frames (§8.3, grouped; Het 12 Nov 2026). Compares the view with the one seen at the
+/* EVENT frames (§8.3, grouped). Compares the view with the one seen at the
  * previous call (at start-up: the boot state) and sends one event per kind of change, naming
  * as a bit mask every node or parameter that made it (bit n-1 = MCUn or Pn). Order: peers that
  * restarted; peers whose link changed, one event per new link state; MCU1's own state; then
  * parameters: owner went offline, owner back, became VALID, became INVALID, became FRESH,
- * became STALE. The app calls it right after anything that can change one of these (Het, 13 Nov
- * 2026: events option b; app_master.c), so it sees every change, however short.
+ * became STALE. The app calls it right after anything that can change one of these (events
+ * option b; app_master.c), so it sees every change, however short.
  * Events wait in a queue and are never replaced; if it is full, an event is lost and counted
  * (events_dropped, frames_skipped). Returns the number of events made. */
 uint32_t monitor_send_events(const monitor_view_t *view);
 
 void monitor_get_stats(monitor_stats_t *out);
 
-/* Controllers online out of 4: this node, plus every peer whose link is ONLINE or LATE (Het,
- * 13 Nov 2026: one late heartbeat is not yet a failure, so health does not dip for it). A peer
- * that is OFFLINE, RECOVERING, NO_HEARTBEAT, DATA_INVALID or never heard does not count. */
+/* Controllers online out of 4: this node, plus every peer whose link is ONLINE or LATE (one late
+ * heartbeat is not yet a failure, so health does not dip for it). A peer that is OFFLINE,
+ * RECOVERING, NO_HEARTBEAT, DATA_INVALID or never heard does not count. */
 uint32_t monitor_online_count(const monitor_view_t *view);
 
-/* Network health, 0-100 (Het, 12 Nov 2026; assignment dashboard Section 1): the weaker of
+/* Network health, 0-100 (assignment dashboard Section 1): the weaker of
  *   controllers online       online / 4
  *   parameters synchronised  synced / 20   (VALID and FRESH at MCU1, params_synced_count())
  * each in whole percent, rounded down. Never better than the weakest part. Examples:

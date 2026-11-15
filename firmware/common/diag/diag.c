@@ -17,13 +17,13 @@
 #define FIRST_MISS_MS       150U
 #define OFFLINE_MISSED      3U
 
-/* DATA_INVALID (Het, 12 Nov 2026): a peer whose heartbeats arrive but none of whose parameter
+/* DATA_INVALID: a peer whose heartbeats arrive but none of whose parameter
  * blocks passed checks 1-7 for this long. Blocks come every 10 ms and its parameters are STALE
  * after 30 ms anyway; the node verdict takes as long as OFFLINE, so a short burst of bad frames
  * never changes it. */
 #define DATA_TIMEOUT_MS 350U
 
-/* Restart by uptime, wrap-safe (Het, 12 Nov 2026; see uptime_went_back()). How far a peer's
+/* Restart by uptime, wrap-safe (see uptime_went_back()). How far a peer's
  * uptime may step forward through 2^32 beyond the time that passed here and still count as a
  * wrap. Without a restart, the step and the time passed differ only by:
  *   - the ms rounding of the two clocks: up to 2 ms;
@@ -170,7 +170,7 @@ void diag_on_heartbeat(uint8_t node, const comm_heartbeat_t *hb, bool restart, u
     p->heartbeats++;
 
     if (restarted || (p->confirm_needed && (p->link != DIAG_RECOVERING))) {
-        /* Back after OFFLINE (Het, 11 Nov 2026), or restarted: RECOVERING only. This heartbeat
+        /* Back after OFFLINE, or restarted: RECOVERING only. This heartbeat
          * can never also confirm the recovery. After a reconnect, the first heartbeat may be an
          * old one left in the sender's Tx FIFO, sent before it lost the bus and still saying
          * OPERATIONAL (the same cause as Design Document open item 2). Only a later heartbeat
@@ -192,7 +192,7 @@ void diag_on_heartbeat(uint8_t node, const comm_heartbeat_t *hb, bool restart, u
         set_link(node, DIAG_ONLINE, rx_time_ms); /* From UNKNOWN, LATE or NO_HEARTBEAT */
     }
 
-    /* Het, 11 Nov 2026: the first heartbeat from any other node ends BOOT. */
+    /* The first heartbeat from any other node ends BOOT. */
     if (own_state == COMM_STATE_BOOT) {
         set_own(COMM_STATE_RESYNCING, rx_time_ms);
     }
@@ -212,11 +212,11 @@ void diag_on_param_block(uint8_t node, uint32_t rx_time_ms)
     }
 }
 
-/* Het, 11 Nov 2026. RESYNCING -> OPERATIONAL once every connected peer has sent a parameter
+/* RESYNCING -> OPERATIONAL once every connected peer has sent a parameter
  * block that comm/ accepted (rejected frames never count). OPERATIONAL -> RESYNCING when no
  * peer is connected any more: a node alone never reports OPERATIONAL. Other nodes coming and
  * going do not change this node's own state.
- * Het, 12 Nov 2026: a DATA_INVALID peer is not waited for, and does not count as connected:
+ * A DATA_INVALID peer is not waited for, and does not count as connected:
  * this node exchanges no data with it. */
 static void update_own_state(uint32_t now_ms)
 {
@@ -263,7 +263,7 @@ uint8_t diag_update(uint32_t now_ms, const bool data_ok[COMM_NODE_COUNT])
 
         if (p->missed >= OFFLINE_MISSED) {
             if (data_ok[node - 1U]) {
-                /* Het, 11 Nov 2026: heartbeats stopped, but its parameters still arrive VALID
+                /* Heartbeats stopped, but its parameters still arrive VALID
                  * and FRESH. Not OFFLINE: the node is alive and only its heartbeat path fails. */
                 set_link(node, DIAG_NO_HEARTBEAT, now_ms);
             } else if (p->link != DIAG_OFFLINE) {
@@ -277,7 +277,7 @@ uint8_t diag_update(uint32_t now_ms, const bool data_ok[COMM_NODE_COUNT])
         } else if ((p->missed >= 1U) && ((p->link == DIAG_ONLINE) || (p->link == DIAG_DATA_INVALID))) {
             set_link(node, DIAG_LATE, now_ms);
         } else if ((p->link == DIAG_ONLINE) && ((now_ms - p->last_block_ms) >= DATA_TIMEOUT_MS)) {
-            /* Het, 12 Nov 2026: heartbeats arrive, but no block from it passed checks 1-7 for
+            /* Heartbeats arrive, but no block from it passed checks 1-7 for
              * 350 ms (its blocks are rejected, or missing). Alive, data path broken: the mirror
              * of NO_HEARTBEAT. Its parameters keep their own state in params/. */
             set_link(node, DIAG_DATA_INVALID, now_ms);

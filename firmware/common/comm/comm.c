@@ -72,7 +72,7 @@ static uint32_t tx_seq[COMM_MSG_COUNT];
 static comm_tx_stats_t tx_stats;
 static comm_errors_t errors;
 
-/* Rejected frames are logged by reason (Het, 11 Nov 2026), within §8.6: the first one of a
+/* Rejected frames are logged by reason, within §8.6: the first one of a
  * reason at once, then at most one line per second with the count since the last line, so a
  * node sending 100 bad frames a second costs one line a second. The report flushes the rest. */
 #define REJECT_LOG_PERIOD_MS 1000U
