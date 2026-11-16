@@ -55,6 +55,28 @@ All four are equal nodes on the bus. MCU1 is the master because it monitors and 
 | Renode | 1.17.0, portable package for Linux, `renode` on `PATH` | Simulation |
 | uv | 0.13.6 | Python 3.12 and the dashboard's packages (`protobuf`, `pyserial`), pinned in `dashboard/uv.lock` |
 
+**Install** (Ubuntu 22.04, x86_64; no `sudo` needed except for the first line). The Arm toolchain and Renode are unpacked into `~/tools` and linked into `~/.local/bin`, which Ubuntu puts on `PATH` at login once the folder exists:
+
+```
+sudo apt install cmake gcc make git curl xz-utils
+mkdir -p ~/tools ~/.local/bin && cd ~/tools
+
+# Arm GNU Toolchain 15.2.Rel1
+curl -LO https://developer.arm.com/-/media/Files/downloads/gnu/15.2.rel1/binrel/arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi.tar.xz
+tar xf arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi.tar.xz
+ln -s ~/tools/arm-gnu-toolchain-15.2.rel1-x86_64-arm-none-eabi/bin/arm-none-eabi-* ~/.local/bin/
+
+# Renode 1.17.0, portable: brings its own .NET runtime, nothing else to install
+curl -LO https://github.com/renode/renode/releases/download/v1.17.0/renode-1.17.0.linux-portable.tar.gz
+tar xf renode-1.17.0.linux-portable.tar.gz            # unpacks into renode_1.17.0-portable/
+ln -s ~/tools/renode_1.17.0-portable/renode ~/.local/bin/renode
+
+# uv 0.13.6 (installs into ~/.local/bin); it fetches Python 3.12 for the dashboard by itself
+curl -LsSf https://astral.sh/uv/0.13.6/install.sh | sh
+```
+
+Open a new terminal, then check that each tool answers: `arm-none-eabi-gcc --version`, `renode --version`, `uv --version`, `cmake --version`.
+
 **Build and test** (from the repo root):
 
 ```
