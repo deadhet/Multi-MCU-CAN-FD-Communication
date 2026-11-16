@@ -147,6 +147,7 @@ The page design is described in `docs/dashboard_design.md`.
 
 | Document | Covers |
 |---|---|
+| `docs/architecture_flow.md` | End-to-end code flow: the `main()` super-loop, the task table, and the CAN/UART paths down to the drivers and ISRs |
 | `docs/comm_design.md` | Frame layouts, validation order and counters, sequence and restart handling |
 | `docs/fdcan_design.md` | FDCAN driver: clocks, bit timing, filters, receive and transmit paths |
 | `docs/params_design.md` | The parameter table and database rules, freshness, validity, the settle rule after reconnects |
