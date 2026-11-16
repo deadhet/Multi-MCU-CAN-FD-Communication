@@ -1,7 +1,7 @@
 # Stage 0 setup findings
 
 All results below were measured on Renode 1.17.0 with the probe firmware in
-`docs/stage0_probe/`, unless marked "from source". Each test ran twice with the same result.
+`renode/tests/stage0_probe/`, unless marked "from source". Each test ran twice with the same result.
 
 ## Tool versions
 
@@ -92,14 +92,14 @@ Commands that do not work as hoped:
 
 ### Bit-timing readback
 
-`docs/stage0_probe/t4_register_shadow.resc` adds two `sysbus` hooks that store writes to `0x0C`, `0x1C`, `0x48`
+`renode/tests/stage0_probe/t4_register_shadow.resc` adds two `sysbus` hooks that store writes to `0x0C`, `0x1C`, `0x48`
 per machine and return them on read. The firmware then reads `NBTP=1E013E0F DBTP=00810D44 TDCR=00000F02`,
 `CCCR` is unaffected, and two machines stay independent. Firmware stays unchanged and still reads the real registers.
 
 ## Reproducing
 
 ```
-cd docs/stage0_probe && ./build.sh && mkdir -p out
+cd renode/tests/stage0_probe && ./build.sh && mkdir -p out
 timeout -s KILL 60 renode --disable-gui --console -e "include @$PWD/t2_four_nodes.resc" </dev/null
 ```
 

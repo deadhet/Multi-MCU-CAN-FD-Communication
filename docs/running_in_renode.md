@@ -14,7 +14,7 @@ Renode 1.17.0. Build first: `cmake --build build`. All commands from the repo ro
 | `s1_normal.resc` … `s4_master_failure.resc` | The Design Document §9 scenarios |
 | `run_scenarios.sh` | Runs S1–S4 and checks every node's log (49 checks) |
 | `check_uart_link.sh` | Runs one scenario and checks MCU1's UART link end to end |
-| `tests/` | Break-test benches (see `fault_testing.md`): loopback self test, 2- and 4-node runs, halt, reset, reconnect, duplicate node, frame mutations, receive overload, counter overflow, cross-checks |
+| `tests/` | Break-test benches (see `fault_testing.md`): loopback self test, 2- and 4-node runs, halt, reset, reconnect, duplicate node, frame mutations, receive overload, counter overflow, cross-checks. Also `stage0_probe/`, the day-1 probe of what Renode models (see `setup_findings.md`) |
 
 Every run writes the nodes' debug output to `logs/mcu1.log` … `logs/mcu4.log` (ignored by git).
 
