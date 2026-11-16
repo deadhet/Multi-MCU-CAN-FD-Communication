@@ -88,7 +88,7 @@ renode/network.sh              # terminal 0: Renode with the four MCUs (paused) 
 renode/mcu.sh 1                # terminals 1–4, one per MCU; type "start" in any of them
 ```
 
-All commands, and a one-terminal alternative using Renode's own prompt, are in `docs/running_in_renode.md`.
+Or in one terminal, typing Renode's own commands (`renode/prompt.sh`: Renode at its prompt plus the dashboard). All commands for both are in `docs/running_in_renode.md`.
 
 ## Dashboard
 
@@ -100,7 +100,7 @@ A header and three sections:
 It shows only what MCU1 sends. Against Renode it starts with `renode/demo.sh` or `renode/network.sh`. Against a board, connect MCU1's USART3 (TX, PD8) to a USB-UART adapter:
 
 ```
-dashboard/.venv/bin/python -m noccarc_dashboard.server --serial /dev/ttyUSB0
+cd dashboard && .venv/bin/python -m noccarc_dashboard.server --serial /dev/ttyUSB0
 ```
 
 The page design is described in `docs/dashboard_design.md`.

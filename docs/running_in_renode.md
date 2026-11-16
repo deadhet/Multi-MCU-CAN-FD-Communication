@@ -8,6 +8,7 @@ Renode 1.17.0. Build first: `cmake --build build`. All commands from the repo ro
 |---|---|
 | `system.resc`, `node.repl` | The four nodes on one CAN hub; included by everything else |
 | `network.sh`, `mcu.sh`, `console.py` | **Drive the network by hand**: one terminal per MCU (below) |
+| `prompt.sh` | **One terminal**: Renode's own prompt and the dashboard (below) |
 | `demo.sh`, `demo.resc` | A scripted run with the dashboard: `demo.resc`, or one of `s1`–`s4` |
 | `s1_normal.resc` … `s4_master_failure.resc` | The Design Document §9 scenarios |
 | `run_scenarios.sh` | Runs S1–S4 and checks every node's log (49 checks) |
@@ -66,12 +67,13 @@ Renode's UART terminal for the dashboard (`system.resc`, TCP port 3456) also lis
 Without `network.sh` and the MCU terminals, Renode's own commands can be typed at its prompt:
 
 ```
-mkdir -p logs
-renode --console -e "logLevel 3; include @renode/system.resc"          # terminal 1
-cd dashboard && .venv/bin/python -m noccarc_dashboard.server --lost-ms 1500   # terminal 2
+renode/prompt.sh                 # Renode at its prompt, four MCUs paused, and the dashboard
+renode/prompt.sh --no-dashboard  # Renode only
 ```
 
-`logLevel 3` hides the start-up warnings (registers Renode does not model). The prompt starts at `(mcu1)`: `system.resc` selects MCU1 last. Then `start`.
+The dashboard runs in the background (its messages in `logs/dashboard.out`); `quit` ends Renode and stops it. Renode starts with `logLevel 3`, which hides the start-up warnings (registers Renode does not model). The prompt starts at `(mcu1)`: `system.resc` selects MCU1 last. Then `start`.
+
+By hand, the script does: `renode --console -e "logLevel 3; include @renode/system.resc"`, with the dashboard started from `dashboard/` (`.venv/bin/python -m noccarc_dashboard.server --lost-ms 1500`).
 
 | Command | Does |
 |---|---|
