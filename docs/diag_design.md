@@ -150,8 +150,8 @@ S1–S4 run and check themselves: `renode/run_scenarios.sh` plays each scenario,
 | Rejected frames | Counted | Counted and logged, rate limited |
 | Peer whose heartbeats arrive but whose blocks all fail | Not specified | DATA_INVALID after 350 ms; not waited for |
 
-## Open items
+## Future scope
 
-1. **Own state with a broken data path: decided**: DATA_INVALID, see above.
-2. **Babbling-node event** (Design Document open item 5): not done.
-3. **Master failure** (§7.5, scenario S4): slaves already treat MCU1 like any peer; the scenario script follows with the Renode stage.
+- **Babbling-node event** (Design Document §15, item 5): a node that floods the bus is contained by its own RAM queue (`ovw` in the driver line), but diag/ raises no event for it.
+- **Master failover** (Design Document §12): when MCU1 fails, the slaves mark it OFFLINE and carry on (scenario S4), but no node takes over the UART monitoring link.
+- **Bus-off detection and recovery** (Design Document §12).

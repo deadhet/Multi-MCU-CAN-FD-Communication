@@ -289,11 +289,19 @@ A UART cannot resend, so this does not recover anything. It makes every loss vis
 
 Results: host tests and pytest pass at commit fab7edb. `check_uart_link.sh` S1–S4 passed on 13 Nov 2026, before the online count included LATE (fab7edb); a rerun is pending.
 
-## 12. Limitations and open items
+## 12. Limitations
 
-- **Renode does not pace the UART:** bytes leave at once, so a busy link (a snapshot replaced, the event queue full) cannot happen there. Only the host tests cover it; on the board, `ev_peak` in MCU1's report will show whether 16 queue entries are enough.
-- **Encode time** was measured only in Renode (≈0.9 ms per snapshot at its fixed 100 MIPS); the 480 MHz chip should be several times faster. To be measured on the board.
-- **Varints grow:** uptime and sequence numbers take more bytes as they grow (uptime: 4 bytes after 35 minutes, 5 after 3.1 days), so a snapshot grows by a few bytes over days. Open: `fixed32` for those fields.
+- **Renode does not pace the UART:** bytes leave at once, so a busy link (a snapshot replaced, the event queue full) cannot happen there. Only the host tests cover it.
+- **Encode time** was measured only in Renode (≈0.9 ms per snapshot at its fixed 100 MIPS); the 480 MHz chip should be several times faster.
+- **Varints grow:** uptime and sequence numbers take more bytes as they grow (uptime: 4 bytes after 35 minutes, 5 after 3.1 days), so a snapshot grows by a few bytes over days.
 - **Port 3456** (Renode's UART terminal) listens on every network interface. It is read-only, but anyone on the same network could read the stream: use a firewall on untrusted networks.
 - **Bytes sent before the PC connects** are dropped by Renode. This is harmless: CONFIG repeats every second, snapshots every 100 ms.
 - **The 300 ms loss limit** applies on the board; Renode needs 1500 ms (section 8).
+
+## 13. Future scope
+
+- **`fixed32` for uptime and sequence numbers**, so a snapshot keeps one size however long the node runs.
+- **Measure on the board:** the encode time per snapshot, and `ev_peak` in MCU1's report, which shows whether 16 event-queue entries are enough on a paced link.
+- **Delta snapshots with periodic keyframes**, if link bandwidth ever becomes a limit (Design Document §12).
+- **Repeat recent events inside snapshots**, if event delivery must be guaranteed (Design Document §12).
+- **USART FIFO or DMA transmission, and RTS/CTS** on real hardware (Design Document §12).

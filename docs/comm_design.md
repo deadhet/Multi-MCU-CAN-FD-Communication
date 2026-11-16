@@ -119,8 +119,16 @@ Node 2's own counters stayed 0 in every case, and the other streams were unaffec
 
 §4.3 specifies one 32-slot CAN Rx ring that drops the newest frame when full. Now there are 4 RAM queues of 8 slots: one for heartbeats (and our own IDs), one per peer for parameter blocks. Each keeps its newest frames by lap detection, with no interrupt masking and one writer per index (`docs/fdcan_design.md`, receive path). Reasons: after a main-loop stall the old ring delivered data 410–500 ms old, and one flooding node could fill the shared ring for everyone. The hardware Rx FIFO stays in blocking mode. The Design Document PDF itself is not changed.
 
-## Open items
+## Decided since the Design Document
 
-1. **Restart vs the sequence rule: decided, option B (11 Nov 2026).** See the restart rule above. If the boot heartbeat is lost, the next one (still BOOT, or lower uptime) triggers it; if all are lost, diag/ marks the node OFFLINE and calls `comm_forget_peer()` (≈350 ms). The uptime path is tested once diag/ reports states other than BOOT.
-2. **Stale queued frames after reconnect: decided, params/ settle rule.** The 4 frames held in the Tx FIFO go out first and carry values from before the disconnect (Stage 0 finding, confirmed here). They pass every check, so comm/ still accepts them; params/ stores them but keeps the sender's parameters STALE until a block arrives on the 10 ms beat. See `docs/params_design.md`, settle rule. Cancelling them at the sender (`TXBCR`) was not used: it jams Renode's Tx FIFO.
-3. **Check 8: done in params/ (Stage 5).**
+These were open (the first two in Design Document §15). They are closed, and described above or in the module named:
+
+- **Restart against the sequence rule** (item 1): the restart rule, option B. If the boot heartbeat is lost, the next heartbeat (still BOOT, or with a lower uptime) triggers it; if all are lost, diag/ marks the node OFFLINE and calls `comm_forget_peer()` (≈350 ms).
+- **Old queued frames after reconnect** (item 2): the 4 frames held in the Tx FIFO go out first and carry values from before the disconnect. They pass every check, so comm/ accepts them; the settle rule in params/ keeps them from counting as FRESH (`docs/params_design.md`).
+- **Check 8** (value range): done in params/.
+
+## Future scope
+
+- **Cancel old Tx frames at the sender** (`TXBCR`) when the bus comes back, so they are never sent. Not used so far because cancel jams Renode's Tx FIFO; to be tried on the board.
+- **A queue that never overwrites, for command or event messages on CAN**, if such messages are ever added. The present queues keep the newest frame, which is right for periodic data but would lose a command silently (Design Document §15, item 3).
+- **Explicit resync request** on the reserved IDs 0x011–0x014, if parameter periods grow (Design Document §12).

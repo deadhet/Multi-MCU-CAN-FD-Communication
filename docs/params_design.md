@@ -142,6 +142,8 @@ MCU1 val 1=3054676940 2=1130142809 ... 20=1
 | Sensor sampling | Separate per-parameter sample periods | Kept, but called from the 10 ms send task (see above) |
 | Old Tx frames after reconnect | Open item 2 | Settle rule at the receiver |
 
-## Open items
+## Future scope
 
-1. **Restart and OFFLINE: decided**. An OFFLINE node's values are kept (STALE) and marked with the owner-offline flag; see "How the app uses it".
+- **Real ranges per parameter.** Check 8 uses the full type domain for now; minimum and maximum per parameter would make it reject implausible values.
+- **Close the settle rule's known limit:** a link that drops again 5–30 ms into the flush could release one old block as FRESH. Not seen in any scenario. Cancelling old Tx frames at the sender (`docs/comm_design.md`, future scope) would remove the cause.
+- **Rate groups** if parameters ever need different bus rates (Design Document §12).
