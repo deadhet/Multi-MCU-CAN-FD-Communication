@@ -36,8 +36,8 @@ swap() { # file old new
         s/\Q$o\E/$n/;' "$1"
 }
 
-run_line='        sched_run_due(tasks, TASK_COUNT);'
-drain_lines=$'        while (comm_receive(&frame)) {\n        }'
+run_line='        sched_run_due();'
+drain_lines=$'        while (comm_receive(&frame)) {\n            if (frame.type == COMM_MSG_PARAM) {\n                params_apply_block(frame.source, &frame.body.param, frame.sequence, frame.rx_time_ms);\n                diag_on_param_block(frame.source, frame.rx_time_ms);\n            } else {\n                diag_on_heartbeat(frame.source, &frame.body.heartbeat, frame.restart, frame.rx_time_ms);\n            }\n        }'
 
 stall_code='
 #if NODE_ID == 3 /* OVERLOAD TEST */
@@ -96,6 +96,12 @@ print_code='
         }
 #else
         while (comm_receive(&frame)) {
+            if (frame.type == COMM_MSG_PARAM) {
+                params_apply_block(frame.source, &frame.body.param, frame.sequence, frame.rx_time_ms);
+                diag_on_param_block(frame.source, frame.rx_time_ms);
+            } else {
+                diag_on_heartbeat(frame.source, &frame.body.heartbeat, frame.restart, frame.rx_time_ms);
+            }
         }
 #endif'
 

@@ -154,6 +154,7 @@ The page design is described in `docs/dashboard_design.md`.
 | `docs/sched_design.md` | The scheduler and its timing measurements |
 | `docs/uart_protocol.md` | The UART link: frame, messages, fields, a worked hex example, error and loss handling |
 | `docs/dashboard_design.md` | The dashboard: data sources, display rules, safety |
+| `docs/fault_testing.md` | How the system is deliberately broken in Renode (corrupt frames, overload, node failures, counter wraps) and how it holds |
 | `docs/running_in_renode.md` | Every script and command for running and driving the simulation |
 | `docs/setup_findings.md` | Tool versions, and what Renode 1.17's STM32H743 and CAN models do and do not support |
 

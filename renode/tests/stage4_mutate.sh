@@ -74,5 +74,5 @@ timeout 200 renode --disable-gui --console -e "include @$dst/renode/mutant_run.r
 
 echo "##### mutation: $name"
 for n in 1 2 3 4; do
-    grep -A14 ' t=1005 tx ' "$dst/logs/mcu$n.log" | grep -E ' rx n| err | rx rejected | db synced| diag self'
+    grep -A14 -E ' t=100[56] tx ' "$dst/logs/mcu$n.log" | grep -E ' rx n| err | rx rejected | db synced| diag self'
 done
