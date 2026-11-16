@@ -9,6 +9,7 @@ Renode 1.17.0. Build first: `cmake --build build`. All commands from the repo ro
 | `system.resc`, `node.repl` | The four nodes on one CAN hub; included by everything else |
 | `network.sh`, `mcu.sh`, `console.py` | **Drive the network by hand**: one terminal per MCU (below) |
 | `prompt.sh` | **One terminal**: Renode's own prompt and the dashboard (below) |
+| `show/` | Short fault files for that prompt, one line each: `include @renode/show/s2.resc` (below) |
 | `demo.sh`, `demo.resc` | A scripted run with the dashboard: `demo.resc`, or one of `s1`–`s4` |
 | `s1_normal.resc` … `s4_master_failure.resc` | The Design Document §9 scenarios |
 | `run_scenarios.sh` | Runs S1–S4 and checks every node's log (49 checks) |
@@ -102,6 +103,30 @@ start
 ```
 
 The scenario files (`s1_normal.resc` …) load the four MCUs themselves: start Renode with one (`renode --console -e "include @renode/s2_slave_failure.resc"`) rather than including it at a loaded prompt.
+
+### Short show files (`renode/show/`)
+
+Each file is one fault, typed as one line at the loaded prompt after `start` (Renode started from the repo root):
+
+```
+include @renode/show/s2.resc
+```
+
+A file pauses the network, does its steps with exact simulated timing, and starts the network again. A 2 s fault takes about 7 s of wall time, and the prompt is busy until it ends.
+
+| File | Does | Seen at the other nodes |
+|---|---|---|
+| `s2.resc` | MCU3 hangs 2 s, then is reset | LATE, OFFLINE, RESTART, RECOVERING, ONLINE; health 75 % |
+| `s3.resc` | MCU3's CAN cable out 2 s, then back | LATE, OFFLINE, RECOVERING, ONLINE; no restart |
+| `s4.resc` | MCU1 hangs 2 s, then is reset | As `s2`, for MCU1, in the slaves' logs (`logs/mcu2.log`). The dashboard loses its source, and MCU1's counters start again from 0: run it last |
+| `blip.resc` | MCU3's cable out 0.2 s | LATE, ONLINE; never OFFLINE |
+| `hang.resc` | MCU3 hangs 2 s and continues, no reset | LATE, OFFLINE, RECOVERING, ONLINE; no restart |
+| `reboot.resc` | MCU3 is reset with no hang | RESTART, RECOVERING, ONLINE; no OFFLINE first |
+| `two_down.resc` | MCU2 and MCU4 hang together 2 s, then are reset | Both as `s2`; health 50 % |
+
+All seven were run in one session on 16 Nov 2026 and gave these states. In `s3` and `hang`, MCU3's parameter blocks arrive just before its first heartbeat, so the others show NO_HEARTBEAT for 26–45 ms before RECOVERING.
+
+Leave a few seconds between files: `s3` and `blip` pull the cable, and pulling a cable that is already out crashes Renode (above).
 
 ## Scripted runs
 
