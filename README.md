@@ -31,6 +31,7 @@ All four are equal nodes on the bus. MCU1 is the master because it monitors and 
 
 | Item | Value | Details |
 |---|---|---|
+| System clock | CPU 480 MHz (PLL1 from the 64 MHz HSI); AHB 240 MHz, APB 120 MHz; FDCAN kernel clock 80 MHz (PLL2); 1 ms SysTick | `firmware/common/drivers/clock.h`, `docs/fdcan_design.md` |
 | CAN IDs | `(type << 4) \| node`: parameter blocks 0x021–0x024, heartbeats 0x031–0x034. The faster message wins arbitration; the low nibble is the sender | `docs/comm_design.md` |
 | Parameter block | Every 10 ms, 32 bytes: 5 values, uint32 sequence, CRC-16 | `docs/comm_design.md` |
 | Heartbeat | Every 100 ms, 16 bytes: state, synced count, sequence, uptime, error summary | `docs/comm_design.md` |
@@ -147,6 +148,7 @@ The page design is described in `docs/dashboard_design.md`.
 
 | Document | Covers |
 |---|---|
+| `design/Design_Document_v1.0.pdf` | **The Design Document (specification):** requirements, every decision with its reason, rejected options, and the specification sheet (section 2.1). The `.md` beside it is its source. "Design Document §n" in the code and in `docs/` refers to it |
 | `docs/architecture_flow.md` | End-to-end code flow: the `main()` super-loop, the task table, and the CAN/UART paths down to the drivers and ISRs |
 | `docs/comm_design.md` | Frame layouts, validation order and counters, sequence and restart handling |
 | `docs/fdcan_design.md` | FDCAN driver: clocks, bit timing, filters, receive and transmit paths |
@@ -159,7 +161,7 @@ The page design is described in `docs/dashboard_design.md`.
 | `docs/running_in_renode.md` | Every script and command for running and driving the simulation |
 | `docs/setup_findings.md` | Tool versions, and what Renode 1.17's STM32H743 and CAN models do and do not support |
 
-The design documents also record the measured results and the options considered and rejected.
+The files in `docs/` describe each module as built, and also record the measured results and the options considered and rejected.
 
 ## Repository layout
 
@@ -174,7 +176,8 @@ dashboard/         Python web dashboard (uv project) and its tests
 renode/            platform and system scripts, scenarios, demo, MCU terminals, step files
   tests/           fault benches
 scripts/           gen_proto.sh: regenerates the Protobuf code
-docs/              design documents
+design/            the Design Document: the specification (PDF and its Markdown source)
+docs/              module documents: design as built, results, how to run and test
 cmake/             arm-none-eabi toolchain file
 ```
 
