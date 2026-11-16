@@ -1,0 +1,9 @@
+# S4, short: MCU1 (master) hangs for 2 s, then is reset. The dashboard loses its source; watch logs/mcu2.log.
+# At a loaded prompt (renode/prompt.sh, after "start"):  include @renode/show/s4.resc
+pause
+mach set "mcu1"
+sysbus.cpu IsHalted true
+emulation RunFor "2.0"
+machine Reset
+sysbus.cpu IsHalted false
+start

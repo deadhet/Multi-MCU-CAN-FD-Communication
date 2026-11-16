@@ -1,0 +1,8 @@
+# S3, short: MCU3's CAN cable out for 2 s, then back, no restart. Expect OFFLINE, RECOVERING, ONLINE, restarts unchanged.
+# At a loaded prompt (renode/prompt.sh, after "start"):  include @renode/show/s3.resc
+pause
+mach set "mcu3"
+connector Disconnect sysbus.fdcan1 canHub
+emulation RunFor "2.0"
+connector Connect sysbus.fdcan1 canHub
+start

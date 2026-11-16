@@ -1,0 +1,8 @@
+# MCU3 hangs for 2 s and continues without a reset. Expect OFFLINE, then back, restarts unchanged.
+# At a loaded prompt (renode/prompt.sh, after "start"):  include @renode/show/hang.resc
+pause
+mach set "mcu3"
+sysbus.cpu IsHalted true
+emulation RunFor "2.0"
+sysbus.cpu IsHalted false
+start

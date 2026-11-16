@@ -1,0 +1,9 @@
+# S2, short: MCU3 hangs for 2 s, then is reset. Expect LATE, OFFLINE, RECOVERING, ONLINE, restarts +1.
+# At a loaded prompt (renode/prompt.sh, after "start"):  include @renode/show/s2.resc
+pause
+mach set "mcu3"
+sysbus.cpu IsHalted true
+emulation RunFor "2.0"
+machine Reset
+sysbus.cpu IsHalted false
+start

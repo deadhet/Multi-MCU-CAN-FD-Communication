@@ -1,0 +1,7 @@
+# MCU3 is reset with no hang before it. Expect restarts +1 without OFFLINE first.
+# At a loaded prompt (renode/prompt.sh, after "start"):  include @renode/show/reboot.resc
+pause
+mach set "mcu3"
+machine Reset
+sysbus.cpu IsHalted false
+start

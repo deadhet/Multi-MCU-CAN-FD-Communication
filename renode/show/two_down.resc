@@ -1,0 +1,15 @@
+# MCU2 and MCU4 hang together for 2 s, then both are reset. Expect health 50 % while they are down.
+# At a loaded prompt (renode/prompt.sh, after "start"):  include @renode/show/two_down.resc
+pause
+mach set "mcu2"
+sysbus.cpu IsHalted true
+mach set "mcu4"
+sysbus.cpu IsHalted true
+emulation RunFor "2.0"
+mach set "mcu2"
+machine Reset
+sysbus.cpu IsHalted false
+mach set "mcu4"
+machine Reset
+sysbus.cpu IsHalted false
+start

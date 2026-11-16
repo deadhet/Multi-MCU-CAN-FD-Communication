@@ -1,0 +1,8 @@
+# MCU3's cable out for 0.2 s only. Expect LATE and back to ONLINE, never OFFLINE.
+# At a loaded prompt (renode/prompt.sh, after "start"):  include @renode/show/blip.resc
+pause
+mach set "mcu3"
+connector Disconnect sysbus.fdcan1 canHub
+emulation RunFor "0.2"
+connector Connect sysbus.fdcan1 canHub
+start
