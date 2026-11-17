@@ -272,8 +272,8 @@ int main(void)
     sched_init(tasks, TASK_COUNT);
 
     for (;;) {
-        sched_pass_mark();
-        sched_run_due();
+        sched_pass_mark(); // use to find trip time, used for deciding queue slots in RAM for Parameter Blocks.
+        sched_run_due(); //The scheduler goes down the list and checks tasks: "has waiting time passed since the last run" If yes, it runs the task. If not, it skips it and moves on.
         look_for_events(false); /* Changes made by the tasks of this pass */
 
         /* Drain the CAN RX ring on every pass (Design Document §4.1). comm validates and counts

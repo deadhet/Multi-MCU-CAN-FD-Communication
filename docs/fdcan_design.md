@@ -92,6 +92,15 @@ Measured with `renode/tests/stage4_overload.sh` (MCU3, node 1's frames after the
 
 **Reconnect recovery.** In Renode, frames stay pending after a disconnect and only a new add request restarts them. When the FIFO is full, `fdcan_send()` writes `TXBAR = TXBRP`. Real hardware ignores requests for pending buffers (RM p.2553, note), so this is harmless there. `TXBCR` is not used, because it left the Renode FIFO stuck.
 
+**Full Tx FIFO: refuse the new frame, do not overwrite.** The 4-frame FIFO fills only when nothing can leave: the node is off the bus, or no other node acknowledges. `fdcan_send()` then returns false and counts `tx_fifo_full`; comm counts `not_queued` and does not use a sequence number. Reasons:
+
+- **Overwriting is not available.** A pending Tx frame cannot be rewritten in place; it must first be cancelled through `TXBCR`. In Renode the cancel left the FIFO stuck (`docs/setup_findings.md`), and cancel on dedicated Tx buffers was not tested.
+- **It would gain nothing while the FIFO is full.** No receiver gets any frame then, old or new. The next periodic send, 10 ms later, offers the newest values again.
+- **The cost is handled at the receiver.** After a reconnect the 4 waiting frames go out first, with old values. The settle rule holds the first block after a gap (`docs/params_design.md`), and the first heartbeat after a silence only makes a node RECOVERING (`docs/diag_design.md`). Both work the same in Renode and on hardware.
+- **The sequence counts frames really queued.** A gap at the receiver then always means a frame lost on the bus. A refused frame that used up a number would be counted there as lost although it was never sent; refusals are counted at the sender instead (`not_queued`, `tx_fifo_full`).
+
+Cancelling old frames at the sender is future scope (`docs/comm_design.md`), to be tried on the board.
+
 ## Renode limits
 
 - `NBTP`, `DBTP` and `TDCR` writes are dropped, so they read back as reset values. The writes can be seen with `LogPeripheralAccess`.
