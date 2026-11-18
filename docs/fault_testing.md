@@ -1,6 +1,6 @@
 # Fault and break testing
 
-Beyond the unit tests and the four assignment scenarios, the system is deliberately **broken** in Renode to prove it holds: corrupt frames, a flooded bus, a hung or reset node, a duplicate node, and 32-bit counters driven past their wrap. Each test targets a real-world failure, injects it in a reproducible way, and checks the nodes' logs against the expected, safe reaction.
+Beyond the unit tests and the four assignment scenarios, the system is deliberately **broken** in Renode to prove it holds: corrupt frames, a flooded bus, a hung or reset node, a duplicate node, and 32-bit counters driven past their wrap. Each test targets a real-world failure, injects it in a reproducible way, and checks the nodes' logs against the expected, safe reaction. Sections 5 and 6 list the scenario checks (`run_scenarios.sh`) and the unit tests on the PC (`run_host_tests.sh`).
 
 All results below are from a full run on 16 Nov 2026 (Renode 1.17.0). Run times are wall-clock on the development PC (Renode runs at about 0.3× real time).
 
@@ -49,7 +49,7 @@ The design point proven: one noisy or stalled path never starves the others, and
 
 ## 3. Node failures — the scenario benches
 
-The real firmware, with Renode injecting the fault. `run_scenarios.sh` plays S1–S4 and checks 49 expected log events in order: **49 passed, 0 failed** (204 s). The focused benches:
+The real firmware, with Renode injecting the fault. `run_scenarios.sh` plays S1–S4 and checks 49 expected log events in order: **49 passed, 0 failed** (204 s); every check is listed in section 5. The focused benches:
 
 | Bench | Real-world case | Result |
 |---|---|---|
@@ -93,13 +93,43 @@ It builds, runs four nodes for 12 s of simulated time while capturing MCU1's UAR
 - the CAN sequence wraps were absorbed by the signed-difference check: no false `old`, `dup`, `lost` or restart;
 - the host decoded all 149 UART frames with **0 missing, 0 lost, 0 false restarts**, and unwrapped MCU1's uptime to **49 d 17:02:55 (count wrapped 1 time)**; 119 snapshots replayed with 0 differences.
 
-**One observation (not a fault).** Because the test forces the clock near its maximum *at boot*, each node briefly reports its peers OFFLINE for the first few milliseconds: a peer's timer still reads 0 while the clock reads ~49.7 days, so the first "age" looks huge until heartbeats arrive. A real node boots at ms = 0, so this never happens in practice; it is an artifact of starting the clock high at boot, and the test's verdict therefore measures the behaviour **across the wrap**, after the nodes have synced. See `study_material/test_report.md` for the note and a suggested robustness improvement.
+**One observation (not a fault).** Because the test forces the clock near its maximum *at boot*, each node briefly reports its peers OFFLINE for the first few milliseconds: a peer's timer still reads 0 while the clock reads ~49.7 days, so the first "age" looks huge until heartbeats arrive. A real node boots at ms = 0, so this never happens in practice; it is an artifact of starting the clock high at boot, and the test's verdict therefore measures the behaviour **across the wrap**, after the nodes have synced. A possible hardening, not applied: start each peer's last-heartbeat time at the clock's value in `diag_init()` instead of 0. At a real boot (ms = 0) this changes nothing, but the diagnostics would then be right for any boot clock value.
 
 Run time: about 1.5 min (build ~30 s, 12 s simulated ≈ 40 s, capture). The result is recorded here so the test need not run during a presentation.
+
+## 5. The scenario checks — `renode/run_scenarios.sh`
+
+**What it does.** Runs the four assignment scenarios in Renode one after the other, keeps each node's log in `build/scenarios/<scenario>/mcuN.log`, and checks the logs: one PASS or FAIL line per check, then `## 49 passed, 0 failed`; it exits with 1 if any check fails. The checks look for log lines in a required order, count lines, read the last report and the report at 7005 ms (4 ms of slack for the scheduler's drift), and run two cross-checks: `renode/tests/stage4_crosscheck.awk` (every receiver accepted every frame each sender queued) and `renode/tests/stage5_params_crosscheck.awk` (every parameter copy equals its owner's value at the same report).
+
+| Scenario | Fault injected | Checks | Each check requires |
+|---|---|---|---|
+| S1, `s1_normal.resc` | None, 10 s | 11 | Each of the 4 nodes: OPERATIONAL, `synced=20`, `never=0` at the end; no LATE, OFFLINE, RECOVERING, NO_HEARTBEAT or DATA_INVALID line ever. All nodes: every parameter copy equals its owner's value at every report; every frame queued was accepted (boot losses listed separately); no frame rejected and no debug text dropped |
+| S2, `s2_slave_failure.resc` | MCU3 halted at 5 s, reset at 10 s, run to 15 s | 13 | MCU1, MCU2, MCU4 each: n3 LATE → OFFLINE → owner-offline flag on P11–P15 → RESTART → RECOVERING → flag cleared → ONLINE recovered, in this order; `synced=15` in the 7 s report (still exchanging, only P11–P15 stale); own state never left OPERATIONAL; at the end `synced=20` and n3 restarted once, recovered once. MCU3 after its reset: OPERATIONAL, `synced=20` |
+| S3, `s3_disconnect.resc` | MCU3 off the bus 5–15 s, no restart, run to 20 s | 12 | MCU1, MCU2, MCU4 each: n3 LATE → OFFLINE → flag → RECOVERING → flag cleared → ONLINE recovered; no restart counted; at the end `synced=20`, n3 recovered once. MCU3: all peers OFFLINE → self RESYNCING → peers RECOVERING → self OPERATIONAL → peers ONLINE recovered; at the end OPERATIONAL, `synced=20`. All nodes: parameter copies equal their owner at every report outside the outage |
+| S4, `s4_master_failure.resc` | MCU1 halted at 5 s, reset at 10 s, run to 15 s | 13 | MCU2, MCU3, MCU4 each: n1 LATE → OFFLINE → flag on P1–P5 → RESTART → RECOVERING → flag cleared → ONLINE recovered; `synced=15` in the 7 s report (the slaves keep exchanging without the master); own state never left OPERATIONAL; at the end `synced=20`, n1 restarted once, recovered once. MCU1 after its reset: OPERATIONAL, `synced=20` |
+
+The checks were also run against the wrong logs, where they fail. The times of every event in these runs are in `docs/diag_design.md` (Results).
+
+## 6. Unit tests on the PC — `firmware/tests/host/run_host_tests.sh`
+
+**What it does.** The services and the transmit buffers are plain C without register access, so the script compiles each module with its test using the PC's `gcc` (`-Wall -Wextra -Wshadow -Werror`), runs it, and then runs the dashboard's Python tests (`uv run pytest`). Times are passed in as numbers, so every boundary can be driven at an exact millisecond, and moments that cannot be forced on the target, such as a frame arriving in the middle of a copy, are played step by step. Each C suite prints one PASS line; the script stops at the first failure.
+
+| Suite, PASS line | Code under test | Covers | Details |
+|---|---|---|---|
+| `test_frame_queue.c`, `FRAME QUEUE PASS` | `drivers/frame_queue.c` | 8 cases: each receive queue keeps its newest frames, lap detection and the overwrite count, a frame arriving while the main loop copies one | `docs/comm_design.md`, `docs/fdcan_design.md` |
+| `test_params.c`, `PARAMS PASS` | `params/`, `system_table.c` (as node 2) | The parameter table and init; the 30 ms stale boundary; the settle rule (reconnect replay, 30/31 ms and 4/5 ms boundaries); own and unknown senders; check 8; own source stale and fault; arrival gaps across the ms wrap; the simulated sensors; the owner-offline flag | `docs/params_design.md` |
+| `test_diag.c`, `DIAG PASS` | `diag/` (as node 1) | Boot and never heard; the LATE and OFFLINE boundaries (149/150 ms, 349/350 ms); the first heartbeat after OFFLINE; restart by comm's flag and by uptime; the uptime wrap; NO_HEARTBEAT; DATA_INVALID entered at 350 ms and ended by a block; own state; the ms wrap; the report line | `docs/diag_design.md` |
+| `test_sched.c`, `SCHED PASS` | `sched/` | The due rule, a late run moving the next, no catch-up; longest run, latest start, late count; cycle-counter and ms wraps; longest pass; the report line | `docs/sched_design.md` |
+| `test_tx_slots.c`, `TX SLOTS PASS` | `drivers/tx_slots.c` | The writer (main loop) and the mover (UART interrupt) played step by step: fixed cases, the event queue, then 200,000 random steps checked against the rules after every step | `docs/monitor_design.md` |
+| `test_monitor.c`, `MONITOR PASS` | `monitor/`, `cobs.c`, `crc16.c`, `tx_slots.c`, nanopb (as node 1) | COBS (known vectors, 254/255-byte groups, 500 random round trips); every snapshot field decoded back; CONFIG; latest wins on a busy link; the health table; events in order, grouping, a full queue; the worst-case snapshot size. Writes `build/host/monitor_frames.bin` for the Python test | `docs/uart_protocol.md` §11 |
+| `dashboard/tests/`, `88 passed` | `dashboard/noccarc_dashboard/` | `test_framing.py` (14): COBS, CRC, frame checks, and decoding the C test's frames to the same values. `test_link.py` (10): link states and the 300 ms limit, garbage, frames in pieces, joining mid-frame, gaps replaced or lost, MCU1 restarts. `test_uptime.py` (8): uptime across the 49.7-day wrap. `test_events.py` (7): events replayed against snapshots and against MCU1's log. `test_model.py` (39): what the page shows in every state. `test_server.py` (10): the served files, security headers, host check | `docs/dashboard_design.md`, `docs/uart_protocol.md` §11 |
+
+**Testing the tests.** Copies of the code with one rule broken must make the suites fail, and they do: in `params/`, four broken copies fail 7, 9, 2 and 2 checks; in `diag/`, seven broken copies fail 2 to 9 checks each; in `sched/`, three broken copies fail 5, 4 and 3 checks; and the dashboard tests catch three mutants (LATE shown as normal, no host check, any file served).
 
 ## Running everything
 
 ```
+firmware/tests/host/run_host_tests.sh   # C unit tests and the dashboard's Python tests, on the PC
 renode/run_scenarios.sh                 # S1–S4, 49 checks
 renode/check_uart_link.sh s1|s2|s3|s4   # the UART link end to end
 renode/tests/stage4_mutate.sh <name>    # one corrupt-frame mutation
