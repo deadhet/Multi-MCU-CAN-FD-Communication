@@ -287,7 +287,7 @@ A UART cannot resend, so this does not recover anything. It makes every loss vis
 | PC link | `dashboard/tests/test_link.py`, `test_uptime.py` | Link states on a fake clock, sessions, missing = replaced + lost; the uptime wrap, and a restart the PC never heard not taken for a wrap |
 | End to end, Renode | `renode/check_uart_link.sh s1`…`s4` | Every frame decoded from TCP 3456 while the scenario runs; lost = 0; each snapshot equal to MCU1's debug report of the same pass; events replayed between snapshots give exactly the next snapshot; every change in MCU1's log has its event within 2 ms (measured 0–1 ms), and the other way round; S4: the link LOST once and one MCU1 restart seen |
 
-Results: host tests and pytest pass at commit fab7edb. `check_uart_link.sh` S1–S4 passed on 13 Nov 2026, before the online count included LATE (fab7edb); a rerun is pending.
+Results: host tests and pytest pass at commit fab7edb. `check_uart_link.sh` S1–S4 passed on 13 Nov 2026, before the online count included LATE (fab7edb), and again on 18 Nov 2026 at commit 7c37bdd: 0 frames missing, 0 frame errors, 0 differences between the events and MCU1's log; in S4 the link went LOST once and MCU1's restart was seen once, as expected.
 
 ## 12. Limitations
 

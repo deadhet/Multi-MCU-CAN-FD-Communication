@@ -178,6 +178,7 @@ The page design is described in `docs/dashboard_design.md`.
 | `docs/diag_design.md` | Link and own states, timeouts, restart and recovery rules |
 | `docs/sched_design.md` | The scheduler and its timing measurements |
 | `docs/uart_protocol.md` | The UART link: frame, messages, fields, a worked hex example, error and loss handling |
+| `docs/monitor_design.md` | MCU1's side of the UART link: event detection, frame building, buffers, the latest-wins slots and event queue, the byte mover |
 | `docs/dashboard_design.md` | The dashboard: data sources, display rules, safety |
 | `docs/fault_testing.md` | How the system is deliberately broken in Renode (corrupt frames, overload, node failures, counter wraps) and how it holds |
 | `docs/running_in_renode.md` | Every script and command for running and driving the simulation |
