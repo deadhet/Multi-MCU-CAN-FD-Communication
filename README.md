@@ -171,6 +171,7 @@ The page design is described in `docs/dashboard_design.md`.
 | Document | Covers |
 |---|---|
 | `design/Design_Document_v1.0.pdf` | **The Design Document (specification):** requirements, every decision with its reason, rejected options, and the specification sheet (section 2.1). The `.md` beside it is its source. "Design Document §n" in the code and in `docs/` refers to it |
+| `design/Technical_Document.pdf` | **The technical document:** architecture, design decisions, sample frames and logs, the annotated dashboard, implementation results and simulation limitations (10 pages). The `.md` beside it is its source |
 | `docs/architecture_flow.md` | End-to-end code flow: the `main()` super-loop, the task table, and the CAN/UART paths down to the drivers and ISRs |
 | `docs/comm_design.md` | Frame layouts, validation order and counters, sequence and restart handling |
 | `docs/fdcan_design.md` | FDCAN driver: clocks, bit timing, filters, receive and transmit paths |
@@ -199,7 +200,7 @@ dashboard/         Python web dashboard (uv project) and its tests
 renode/            platform and system scripts, scenarios, demo, MCU terminals, step files
   tests/           fault benches
 scripts/           gen_proto.sh: regenerates the Protobuf code
-design/            the Design Document: the specification (PDF and its Markdown source)
+design/            the Design Document (the specification) and the technical document, each as PDF and its Markdown source
 docs/              module documents: design as built, results, how to run and test
 cmake/             arm-none-eabi toolchain file
 ```
